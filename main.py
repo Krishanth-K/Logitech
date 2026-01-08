@@ -20,8 +20,8 @@ from core import (
 )
 from fastapi.responses import Response, FileResponse
 
-import os
-from dotenv import load_dotenv
+import edge_tts
+import tempfile
 
 # Load environment variables
 load_dotenv()
@@ -29,11 +29,7 @@ load_dotenv()
 app = FastAPI(title="EcoRoute Optimizer API")
 
 # Configuration
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-if not ELEVENLABS_API_KEY:
-    print("WARNING: ELEVENLABS_API_KEY not found in .env file. Voice features will be disabled.")
-
-ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM" # "Rachel" voice (Standard default)
+# No API Key needed for Edge TTS
 
 # CORS middleware
 app.add_middleware(
@@ -439,51 +435,32 @@ class TTSRequest(BaseModel):
 @app.post("/tts")
 async def text_to_speech(request: TTSRequest):
     """
-    Convert text to speech using ElevenLabs API
+    Convert text to speech using Microsoft Edge TTS (Free, High Quality)
     """
-    if not ELEVENLABS_API_KEY or "YOUR_ELEVENLABS_API_KEY" in ELEVENLABS_API_KEY:
-         raise HTTPException(status_code=500, detail="API Key not configured")
-
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
-    headers = {
-        "Accept": "audio/mpeg",
-        "Content-Type": "application/json",
-        "xi-api-key": ELEVENLABS_API_KEY
-    }
-    data = {
-        "text": request.text,
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {
-            "stability": 0.5,
-            "similarity_boost": 0.5
-        }
-    }
-
     try:
-        response = requests.post(url, json=data, headers=headers)
-        if response.status_code == 200:
-            return Response(content=response.content, media_type="audio/mpeg")
-        else:
-            # Parse error for better logging
-            error_msg = response.text
-            try:
-                error_data = response.json()
-                if "detail" in error_data and "status" in error_data["detail"]:
-                    status = error_data["detail"]["status"]
-                    if status == "detected_unusual_activity":
-                        print(f"ElevenLabs Warning: Free Tier limit/abuse detected on this IP. Falling back to standard voice.")
-                        raise HTTPException(status_code=503, detail="Premium voice unavailable (IP blocked by provider)")
-            except:
-                pass
-                
-            print(f"ElevenLabs API Error: {response.status_code} - {error_msg}")
-            raise HTTPException(status_code=response.status_code, detail="ElevenLabs API Error")
+        # Voice: en-US-AriaNeural, en-GB-SoniaNeural, etc.
+        voice = "en-US-AriaNeural" 
+        communicate = edge_tts.Communicate(request.text, voice)
+        
+        # Create a temporary file to save the audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
+            tmp_path = tmp_file.name
+            
+        await communicate.save(tmp_path)
+        
+        # Read the file back into memory
+        with open(tmp_path, "rb") as f:
+            audio_data = f.read()
+            
+        # Clean up temp file
+        os.unlink(tmp_path)
+            
+        return Response(content=audio_data, media_type="audio/mpeg")
 
-    except HTTPException as he:
-        raise he
     except Exception as e:
-        print(f"TTS Internal Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"TTS Error: {e}")
+        # Return a 500 but log it clearly
+        raise HTTPException(status_code=500, detail=f"TTS Error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

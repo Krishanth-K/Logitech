@@ -651,9 +651,9 @@
 
       let usePremium = false;
 
-      // Try ElevenLabs TTS first
+      // Try Edge TTS (Neural Voice) first
       try {
-        statusText.textContent = "Fetching Premium...";
+        statusText.textContent = "Fetching Voice...";
         const response = await fetch(`${API_URL}/tts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -669,12 +669,12 @@
 
           // Update UI to success
           statusDot.className = "status-dot premium";
-          statusText.textContent = "Premium Voice";
-          statusContainer.title = "Using ElevenLabs AI Voice";
+          statusText.textContent = "Neural Voice";
+          statusContainer.title = "Using Microsoft Edge Neural Voice";
           usePremium = true;
           return;
         } else {
-          // If backend returns error (like 500 for missing key), log it
+          // If backend returns error
           const errData = await response.json();
           console.warn("TTS Backend Error:", errData);
 
