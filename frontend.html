@@ -631,12 +631,25 @@
       });
     }
 
+    let currentAudio = null;
+
     async function speak(text) {
       if (!voiceEnabled) return;
+
+      // 1. "Shut Up" logic: Stop previous audio immediately
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
 
       const statusDot = document.getElementById("voiceStatusDot");
       const statusText = document.getElementById("voiceStatusText");
       const statusContainer = document.getElementById("voiceStatus");
+
+      let usePremium = false;
 
       // Try ElevenLabs TTS first
       try {
@@ -651,12 +664,14 @@
           const blob = await response.blob();
           const audioUrl = URL.createObjectURL(blob);
           const audio = new Audio(audioUrl);
+          currentAudio = audio; // Store reference
           audio.play();
 
           // Update UI to success
           statusDot.className = "status-dot premium";
           statusText.textContent = "Premium Voice";
           statusContainer.title = "Using ElevenLabs AI Voice";
+          usePremium = true;
           return;
         } else {
           // If backend returns error (like 500 for missing key), log it
@@ -664,7 +679,7 @@
           console.warn("TTS Backend Error:", errData);
 
           statusDot.className = "status-dot error";
-          statusText.textContent = "Voice Key Missing";
+          statusText.textContent = "Standard (Fallback)";
           statusContainer.title = "Backend Error: " + (errData.detail || "Unknown");
 
           // Show a one-time alert for this session if it's the first failure
@@ -680,9 +695,11 @@
       }
 
       // Fallback to Browser Speech Synthesis
-      statusDot.className = "status-dot standard";
-      statusText.textContent = "Standard Voice";
-      statusContainer.title = "Fallback: Using Browser Text-to-Speech";
+      if (!statusText.textContent.includes("Fallback") && !statusText.textContent.includes("Error")) {
+        statusDot.className = "status-dot standard";
+        statusText.textContent = "Standard Voice";
+        statusContainer.title = "Fallback: Using Browser Text-to-Speech";
+      }
 
       if (!window.speechSynthesis) return;
       const utterance = new SpeechSynthesisUtterance(text);
@@ -695,6 +712,12 @@
       const btn = document.getElementById("voiceToggle");
       btn.textContent = voiceEnabled ? "🔊 Voice ON" : "🔇 Voice OFF";
       btn.classList.toggle("disabled", !voiceEnabled);
+
+      // Stop audio if turning off
+      if (!voiceEnabled) {
+        if (currentAudio) currentAudio.pause();
+        window.speechSynthesis.cancel();
+      }
     }
 
     function showAlert(message) {
@@ -753,10 +776,11 @@
         document.getElementById('alternativesPanel').classList.add('show');
         document.getElementById("trafficStatus").style.display = "block";
 
-        drawAllRoutes(0);
+        // Initial draw - announce the best route (silent=false)
+        drawAllRoutes(0, false);
 
         overlay.classList.remove('show');
-        speak(`Routes calculated. Showing best options.`);
+        // speak(`Routes calculated. Showing best options.`); // Removed redundant speak
 
       } catch (error) {
         console.error("Error:", error);
@@ -767,7 +791,7 @@
       btn.disabled = false;
     }
 
-    function drawAllRoutes(selectedIndex) {
+    function drawAllRoutes(selectedIndex, silent = false) {
       if (allRouteLayers) {
         allRouteLayers.forEach(layer => map.removeLayer(layer));
       }
@@ -781,6 +805,19 @@
           if (route.route_type === 'most_efficient') color = '#2e7d32';
           else if (route.route_type === 'fastest') color = '#1976d2';
           else color = '#f57c00';
+
+          // Announce selection
+          if (!silent) {
+            const summary = `Selected ${route.route_name}. Distance: ${route.metrics.distance_km} kilometers. Time: ${Math.round(route.metrics.estimated_time_min)} minutes.`;
+            speak(summary);
+          }
+          // Highlight card
+          const cards = document.querySelectorAll('.route-card');
+          cards.forEach((c, i) => {
+            if (i === index) c.classList.add('selected');
+            else c.classList.remove('selected');
+          });
+
         } else {
           color = '#9e9e9e';
         }
@@ -792,10 +829,16 @@
           lineJoin: 'round'
         }).addTo(map);
 
+        // Add click handler to polyline to select route
+        polyline.on('click', () => {
+          drawAllRoutes(index);
+        });
+
         if (isSelected) {
           polyline.bringToFront();
           displayMetrics(route.metrics);
         }
+
         allRouteLayers.push(polyline);
       });
 
@@ -810,7 +853,7 @@
         card.classList.toggle('selected', i === index);
       });
       drawAllRoutes(index);
-      speak(`Selected ${alternativeRoutes[index].route_name}`);
+      // speak handled by drawAllRoutes
     }
 
     function displayRouteCards(routes) {
