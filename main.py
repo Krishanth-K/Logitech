@@ -157,9 +157,11 @@ async def health_check():
 async def calculate_route(request: RouteRequest):
     """Calculate single optimal route"""
     if not (request.origin_lat and request.origin_lng and request.dest_lat and request.dest_lng):
-        # Allow client to send text only, but we really need coords for core.py
-        # For now, require coords or fail (Frontend provides them via Nominatim)
-        raise HTTPException(status_code=400, detail="Coordinates required")
+        # Friendly error message for address resolution failures
+        raise HTTPException(
+            status_code=400, 
+            detail="Address not found. Please add a city name (e.g. Hyderabad) for better results."
+        )
 
     # Fetch Routes
     routes_data = RouteFinder.get_routes(request.origin_lat, request.origin_lng, request.dest_lat, request.dest_lng)

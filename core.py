@@ -1,6 +1,7 @@
 import requests
 import math
 import random
+import os
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
 from enum import Enum
@@ -281,8 +282,44 @@ class RouteFinder:
     @staticmethod
     def get_routes(origin_lat: float, origin_lng: float, dest_lat: float, dest_lng: float) -> List[Dict]:
         """
-        Fetch routes from OSRM. Returns list of dicts.
+        Fetch routes. Tries Google Maps if API key is present, otherwise OSRM.
+        Returns list of dicts with keys: distance, duration, geometry.
         """
+        # Try Google Maps
+        google_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+        if google_api_key:
+            try:
+                url = "https://maps.googleapis.com/maps/api/directions/json"
+                params = {
+                    "origin": f"{origin_lat},{origin_lng}",
+                    "destination": f"{dest_lat},{dest_lng}",
+                    "key": google_api_key,
+                    "alternatives": "true"
+                }
+                response = requests.get(url, params=params, timeout=5)
+                data = response.json()
+                
+                if data.get("status") == "OK":
+                    routes = []
+                    for r in data.get("routes", []):
+                        if not r.get("legs"): continue
+                        leg = r["legs"][0]
+                        # Decode polyline to [[lng, lat], ...]
+                        poly = r.get("overview_polyline", {}).get("points", "")
+                        coords = RouteFinder.decode_polyline(poly)
+                        
+                        routes.append({
+                            "distance": leg["distance"]["value"], # meters
+                            "duration": leg["duration"]["value"], # seconds
+                            "geometry": {"coordinates": coords},
+                            "weight_name": "google"
+                        })
+                    return routes
+            except Exception as e:
+                print(f"Google Maps Error: {e}")
+                pass
+
+        # Fallback to OSRM
         try:
             url = f"https://router.project-osrm.org/route/v1/driving/{origin_lng},{origin_lat};{dest_lng},{dest_lat}"
             params = {
@@ -307,6 +344,41 @@ class RouteFinder:
             "geometry": {"coordinates": [[origin_lng, origin_lat], [dest_lng, dest_lat]]},
             "weight_name": "fallback"
         }]
+
+    @staticmethod
+    def decode_polyline(polyline_str):
+        index = 0
+        lat = 0
+        lng = 0
+        coordinates = []
+        length = len(polyline_str)
+        while index < length:
+            shift = 0
+            result = 0
+            while True:
+                byte = ord(polyline_str[index]) - 63
+                index += 1
+                result |= (byte & 0x1f) << shift
+                shift += 5
+                if byte < 0x20:
+                    break
+            dlat = ~(result >> 1) if (result & 1) else (result >> 1)
+            lat += dlat
+            
+            shift = 0
+            result = 0
+            while True:
+                byte = ord(polyline_str[index]) - 63
+                index += 1
+                result |= (byte & 0x1f) << shift
+                shift += 5
+                if byte < 0x20:
+                    break
+            dlng = ~(result >> 1) if (result & 1) else (result >> 1)
+            lng += dlng
+            
+            coordinates.append([lng * 1e-5, lat * 1e-5])
+        return coordinates
 
     @staticmethod
     def haversine(lat1, lon1, lat2, lon2):
