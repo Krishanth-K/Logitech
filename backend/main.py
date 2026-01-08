@@ -18,8 +18,10 @@ from core import (
     TrafficCondition, 
     WeatherData
 )
-from fastapi.responses import Response
+from fastapi.responses import Response, FileResponse
 
+import edge_tts
+import tempfile
 import os
 from dotenv import load_dotenv
 
@@ -29,11 +31,7 @@ load_dotenv()
 app = FastAPI(title="EcoRoute Optimizer API")
 
 # Configuration
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-if not ELEVENLABS_API_KEY:
-    print("WARNING: ELEVENLABS_API_KEY not found in .env file. Voice features will be disabled.")
-
-ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM" # "Rachel" voice (Standard default)
+# No API Key needed for Edge TTS
 
 # CORS middleware
 app.add_middleware(
@@ -145,6 +143,10 @@ def process_route_data(r_data, origin, destination, origin_lat, origin_lng, dest
 
 @app.get("/")
 async def root():
+    return FileResponse("frontend.html")
+
+@app.get("/health")
+async def health_check():
     return {
         "message": "EcoRoute Optimizer API",
         "version": "2.0 (Core Integration)",
@@ -298,76 +300,91 @@ async def get_alternative_routes(request: RouteRequest):
     if not processed_candidates:
         raise HTTPException(status_code=404, detail="No unique routes found")
 
-    final_selection = []
-    
-    # helper to check if a route is already selected
-    def is_selected(r, selected_list):
-        sig = get_geo_sig(r)
-        return any(get_geo_sig(s) == sig for s in selected_list)
-
-    # Note: processed_candidates are already unique by geometry from step 1-3
-
-    # --- SELECTION 1: MOST EFFICIENT (Green) ---
-    # Sort by CO2
-    candidates_by_co2 = sorted(processed_candidates, key=lambda x: x["metrics"].co2_kg)
-    best_efficient = candidates_by_co2[0]
-    
-    # Check if this route is also the absolute fastest
+    # Find absolute bests regardless of previous sorting
     candidates_by_time = sorted(processed_candidates, key=lambda x: x["metrics"].estimated_time_min)
-    is_absolute_fastest = get_geo_sig(best_efficient) == get_geo_sig(candidates_by_time[0])
+    true_fastest = candidates_by_time[0]
     
-    title_1 = "Fastest & Most Efficient" if is_absolute_fastest else "Most Efficient"
+    candidates_by_co2 = sorted(processed_candidates, key=lambda x: x["metrics"].co2_kg)
+    true_efficient = candidates_by_co2[0]
     
-    final_selection.append(AlternativeRoute(
-        route_name=title_1,
-        route_type="most_efficient",
-        metrics=best_efficient["metrics"],
-        waypoints=best_efficient["waypoints"],
-        geometry=best_efficient["geometry"],
-        weather_summary=best_efficient["weather_summary"],
-        traffic_summary=best_efficient["traffic_summary"]
-    ))
+    final_selection = []
 
-    # --- SELECTION 2: FASTEST ALTERNATIVE (Blue) ---
-    # Filter out already selected
-    remaining = [c for c in processed_candidates if c is not best_efficient]
-    
-    if remaining:
-        # Sort rest by time
-        remaining.sort(key=lambda x: x["metrics"].estimated_time_min)
-        best_fastest_alt = remaining[0]
+    # Check for Overlap (Same Geometry check)
+    # Using the first point + length + middle point as a proxy for identity
+    def get_geo_sig(r):
+        g = r["geometry"]
+        if not g: return "empty"
+        return f"{len(g)}-{g[0]}-{g[-1]}"
+
+    is_same_route = get_geo_sig(true_fastest) == get_geo_sig(true_efficient)
+
+    if is_same_route:
+        # CASE: The Efficient route IS the Fastest route
+        # User requirement: "display as fastest and efficitit and no need for a balanced route"
+        combined_metrics = true_fastest["metrics"]
         
         final_selection.append(AlternativeRoute(
-            route_name="Fastest Alternative",
+            route_name="Fastest & Most Efficient",
+            route_type="most_efficient", # Green color priority
+            metrics=combined_metrics,
+            waypoints=true_fastest["waypoints"],
+            geometry=true_fastest["geometry"],
+            weather_summary=true_fastest["weather_summary"],
+            traffic_summary=f"{true_fastest['traffic'].value.title()} Traffic"
+        ))
+        
+        # We stop here to strictly follow "no need for a balanced route"
+        # However, purely returning 1 route might look broken in a UI designed for 3.
+        # But user said "only in this specific case". So be it.
+        
+    else:
+        # CASE: Distinct routes exist
+        
+        # 1. Most Efficient
+        final_selection.append(AlternativeRoute(
+            route_name="Most Efficient",
+            route_type="most_efficient",
+            metrics=true_efficient["metrics"],
+            waypoints=true_efficient["waypoints"],
+            geometry=true_efficient["geometry"],
+            weather_summary=true_efficient["weather_summary"],
+            traffic_summary=f"{true_efficient['traffic'].value.title()} Traffic"
+        ))
+
+        # 2. Fastest Route
+        final_selection.append(AlternativeRoute(
+            route_name="Fastest Route",
             route_type="fastest",
-            metrics=best_fastest_alt["metrics"],
-            waypoints=best_fastest_alt["waypoints"],
-            geometry=best_fastest_alt["geometry"],
-            weather_summary=best_fastest_alt["weather_summary"],
-            traffic_summary=best_fastest_alt["traffic_summary"]
+            metrics=true_fastest["metrics"],
+            waypoints=true_fastest["waypoints"],
+            geometry=true_fastest["geometry"],
+            weather_summary=true_fastest["weather_summary"],
+            traffic_summary=f"{true_fastest['traffic'].value.title()} Traffic"
         ))
-    
-    # --- SELECTION 3: BALANCED / SCENIC (Orange) ---
-    # Filter out first two
-    remaining_2 = [c for c in processed_candidates if c is not best_efficient and c is not best_fastest_alt] if remaining else []
-    
-    if remaining_2:
-        # Sort by total cost score (includes time + fuel cost)
-        remaining_2.sort(key=lambda x: x["metrics"].total_cost_score)
-        best_balanced = remaining_2[0]
+
+        # 3. Balanced Option
+        # Find best score that isn't one of the above
+        remaining = [c for c in processed_candidates if get_geo_sig(c) != get_geo_sig(true_efficient) and get_geo_sig(c) != get_geo_sig(true_fastest)]
         
-        final_selection.append(AlternativeRoute(
-            route_name="Balanced Option",
-            route_type="balanced",
-            metrics=best_balanced["metrics"],
-            waypoints=best_balanced["waypoints"],
-            geometry=best_balanced["geometry"],
-            weather_summary=best_balanced["weather_summary"],
-            traffic_summary=best_balanced["traffic_summary"]
-        ))
-    elif len(final_selection) < 3:
-        # Fallback if we somehow didn't generate enough deviations (should happen rarely due to step 2)
-        pass 
+        if remaining:
+            remaining.sort(key=lambda x: x["metrics"].total_cost_score)
+            balanced = remaining[0]
+            
+            final_selection.append(AlternativeRoute(
+                route_name="Balanced Option",
+                route_type="balanced",
+                metrics=balanced["metrics"],
+                waypoints=balanced["waypoints"],
+                geometry=balanced["geometry"],
+                weather_summary=balanced["weather_summary"],
+                traffic_summary=f"{balanced['traffic'].value.title()} Traffic"
+            ))
+        else:
+            # If no 3rd distinct route exists (rare with force-diversity), we skip it or show a runner up.
+            # Let's show the runner up for efficiency as Balanced if we have to.
+            if len(processed_candidates) > 2:
+                 # Just pick the one that wasn't picked
+                 pass 
 
     # Rounding for display
     for alt in final_selection:
@@ -420,36 +437,32 @@ class TTSRequest(BaseModel):
 @app.post("/tts")
 async def text_to_speech(request: TTSRequest):
     """
-    Convert text to speech using ElevenLabs API
+    Convert text to speech using Microsoft Edge TTS (Free, High Quality)
     """
-    if not ELEVENLABS_API_KEY or "YOUR_ELEVENLABS_API_KEY" in ELEVENLABS_API_KEY:
-         raise HTTPException(status_code=500, detail="API Key not configured")
-
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
-    headers = {
-        "Accept": "audio/mpeg",
-        "Content-Type": "application/json",
-        "xi-api-key": ELEVENLABS_API_KEY
-    }
-    data = {
-        "text": request.text,
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {
-            "stability": 0.5,
-            "similarity_boost": 0.5
-        }
-    }
-
     try:
-        response = requests.post(url, json=data, headers=headers)
-        if response.status_code == 200:
-            return Response(content=response.content, media_type="audio/mpeg")
-        else:
-            print(f"ElevenLabs Error: {response.status_code} - {response.text}")
-            raise HTTPException(status_code=response.status_code, detail="ElevenLabs API Error")
+        # Voice: en-US-AriaNeural, en-GB-SoniaNeural, etc.
+        voice = "en-US-AriaNeural" 
+        communicate = edge_tts.Communicate(request.text, voice)
+        
+        # Create a temporary file to save the audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
+            tmp_path = tmp_file.name
+            
+        await communicate.save(tmp_path)
+        
+        # Read the file back into memory
+        with open(tmp_path, "rb") as f:
+            audio_data = f.read()
+            
+        # Clean up temp file
+        os.unlink(tmp_path)
+            
+        return Response(content=audio_data, media_type="audio/mpeg")
+
     except Exception as e:
         print(f"TTS Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return a 500 but log it clearly
+        raise HTTPException(status_code=500, detail=f"TTS Error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,222 +1,143 @@
 # 🌿 EcoRoute Optimizer
 
-A real-time route optimization system that reduces carbon emissions and improves fuel efficiency using intelligent routing algorithms with voice AI integration.
+> **Smart Routing for a Greener Future.**  
+> Calculate routes based on fuel efficiency, CO2 emissions, and environmental factors—not just travel time.
 
-## 🎯 Problem Statement
+![License](https://img.shields.io/badge/license-MIT-green)
+![Python](https://img.shields.io/badge/python-3.9+-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.109-teal)
+![Status](https://img.shields.io/badge/status-active-success)
 
-Optimize vehicle routes to minimize carbon emissions and maximize fuel efficiency through:
-- **Phase 1**: Find the best route at the start based on current conditions
-- **Phase 2**: Real-time rerouting when conditions change (traffic, road closures, etc.)
+---
 
-## ✨ Features
+## 📋 Project Summary
 
-- 🗺️ **Interactive Map**: Real-time route visualization using OpenStreetMap and Leaflet
-- 📍 **Smart Location Search**: Autocomplete for addresses using Nominatim geocoding
-- 🛣️ **Actual Route Rendering**: Uses OSRM for real road routes (not straight lines)
-- 🔀 **Alternative Routes**: Compare up to 3 different routes (fastest, balanced, eco-friendly)
-- 🌤️ **Real Weather Data**: Live weather conditions at origin and destination via Open-Meteo
-- 🚦 **Traffic Simulation**: Time-based traffic conditions (normal, moderate, heavy)
-- ⛽ **Fuel Efficiency Metrics**: Calculate fuel consumption, CO2 emissions, and cost
-- 🔊 **Voice AI Integration**: Text-to-speech feedback for hands-free operation
-- 🔄 **Real-time Rerouting**: Automatically recalculates when traffic conditions change
-- 💡 **Smart Driving Tips**: Context-aware fuel efficiency recommendations
-- 📊 **Route Comparison**: Side-by-side comparison with savings calculator
+**EcoRoute Optimizer** is an intelligent navigation and simulation platform designed to minimize carbon footprints. Unlike traditional GPS applications that prioritize the fastest path, this system performs a multi-dimensional analysis of **elevation gradients, real-time weather conditions, and traffic patterns** to identify the most fuel-efficient route.
 
-## 🛠️ Tech Stack
+The project features a high-performance **FastAPI** backend for complex physics-based cost modeling, an interactive **Leaflet.js** web dashboard, and a sophisticated **Autonomous Agent** that simulates dynamic environment changes and performs real-time re-routing.
 
-- **Backend**: Python, FastAPI, Uvicorn
-- **Frontend**: HTML, CSS, JavaScript
-- **Mapping**: Leaflet.js, OpenStreetMap tiles
-- **Routing**: OSRM (Open Source Routing Machine)
-- **Geocoding**: Nominatim (OpenStreetMap)
-- **Voice**: Web Speech API (browser-based)
+---
 
-## 🚀 Quick Start
+## 🎥 Project Demo
+
+Watch the full explanation and walkthrough of the project here:
+
+[![Vimeo Demo](https://img.shields.io/badge/Watch%20on-Vimeo-1ab7ea?style=for-the-badge&logo=vimeo)](https://vimeo.com/1152642420)
+
+*(Link to be updated)*
+
+---
+
+## 🏗️ System Architecture
+
+The system is built with a modular architecture, ensuring clear separation between core logic, API services, and the simulation agent.
+
+![System Architecture](assets/arch.png)
+
+### Core Components
+1.  **Frontend**: Interactive web UI built with HTML5, Bootstrap, and Leaflet Maps for real-time visualization.
+2.  **API Engine**: FastAPI-powered backend providing RESTful endpoints for route calculation and TTS generation.
+3.  **Autonomous Agent**: A CLI-based simulation engine (`autonomous_agent.py`) that demonstrates the system's ability to react to dynamic environmental shifts.
+4.  **Neural Voice Service**: Integration with Microsoft Edge TTS for high-quality, natural-sounding route guidance.
+
+---
+
+## 🔄 Control Flow & Logic
+
+The application follows a rigorous data pipeline to convert raw geographic data into environmental insights:
+
+![Control Flow](assets/cfg.png)
+
+### Environmental Intelligence
+*   **Weather Service**: Fetches live data from Open-Meteo API.
+*   **Elevation Service**: Analyzes terrain profiles via Open-Elevation API.
+*   **Traffic Service**: Infers road conditions using OSRM duration deltas and historical patterns.
+*   **Cost Model**: A physics-based engine that calculates fuel consumption (L) and CO2 (kg) by weighing distance, ascent, and external resistance factors.
+
+---
+
+## ✨ Key Features
+
+*   **🌱 Eco-Routing**: Prioritizes routes with the lowest environmental impact.
+*   **⛰️ Terrain Awareness**: Incorporates elevation gain into fuel consumption calculations.
+*   **🌤️ Dynamic Weather**: Adjusts estimates based on real-time precipitation and wind speed.
+*   **🤖 Autonomous Rerouting**: Agent-driven simulation that switches routes as conditions evolve.
+*   **🗣️ AI Voice Guidance**: Crystal-clear neural voice summaries of trip metrics.
+*   **🔑 API Key Free**: Utilizes open-source and free-tier APIs (Open-Meteo, Open-Elevation, OSRM, Edge TTS) for zero-cost operation.
+
+---
+
+## 🛠️ Technical Stack
+
+- **Backend:** FastAPI (Python 3.9+)
+- **Frontend:** HTML5, CSS3, JavaScript (Leaflet.js, Bootstrap 5)
+- **Simulation:** Custom Autonomous Agent (Python)
+- **Voice AI:** Microsoft Edge Neural TTS
+- **Data APIs:**
+  - **Routing:** OSRM (Open Source Routing Machine)
+  - **Weather:** Open-Meteo
+  - **Elevation:** Open-Elevation
+- **Deployment:** Docker, Docker Compose, Vercel, Render
+
+---
+
+## 📂 Project Structure
+
+```text
+.
+├── assets/                 # Documentation diagrams
+├── backend/                # Containerized backend service
+├── frontend/               # Containerized frontend service
+├── autonomous_agent.py     # CLI Autonomous Simulation Agent
+├── main.py                 # FastAPI Application Entry Point
+├── core.py                 # Shared logic and environmental services
+├── requirements.txt        # Python dependencies
+└── docker-compose.yml      # Multi-container orchestration
+```
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
+*   Python 3.9+
+*   Internet connection (for OSRM, Weather, and Elevation APIs)
 
-- Python 3.9+
-- Modern web browser with JavaScript enabled
+### Local Installation
 
-### Installation
+1.  **Clone the repository**
+    ```bash
+    git clone https://github.com/yourusername/ecoroute-optimizer.git
+    cd ecoroute-optimizer
+    ```
 
-1. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+2.  **Install Dependencies**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-2. **Start the application**:
-   ```bash
-   ./start.sh
-   ```
-   
-   Or manually:
-   ```bash
-   python main.py
-   ```
+3.  **Run the Web Application**
+    ```bash
+    uvicorn main:app --reload
+    ```
+    Access the UI at `http://localhost:8000`.
 
-3. **Open the frontend**:
-   - Open `frontend.html` in your browser
-   - Or use a local server:
-     ```bash
-     python -m http.server 8080
-     ```
-   - Navigate to `http://localhost:8080/frontend.html`
+4.  **Run the Autonomous Agent**
+    ```bash
+    python autonomous_agent.py
+    ```
 
-## 📖 Usage
-
-1. **Enter Locations**:
-   - Type origin and destination in the input fields
-   - Select from autocomplete suggestions for accurate coordinates
-
-2. **Calculate Route**:
-   - Click "Find Optimal Route" button
-   - View the route on the interactive map
-   - See fuel consumption, CO2 emissions, distance, and elevation metrics
-
-3. **Compare Alternative Routes**:
-   - Click "Show Alternative Routes" button
-   - View weather conditions at origin and destination
-   - Compare 3 routes: Fastest, Balanced, and Eco-Friendly
-   - See traffic conditions and fuel savings for each route
-   - Click any route card to visualize it on the map
-
-4. **Voice Feedback**:
-   - Toggle voice announcements with the voice button
-   - Get spoken updates on route calculations and tips
-   - Hear route metrics when switching between alternatives
-
-5. **Real-time Updates**:
-   - The system monitors traffic conditions
-   - Automatically reroutes when heavy traffic is detected
-   - Get voice alerts for route changes
-
-## 🔧 API Endpoints
-
-- `GET /` - API information
-- `POST /calculate-route` - Calculate optimal route
-- `POST /alternative-routes` - Get multiple route options with weather & traffic
-- `POST /compare-routes` - Compare route metrics (legacy)
-- `POST /recalculate` - Recalculate route with updated conditions
-- `GET /health` - Health check
-
-### Key Endpoint: `/alternative-routes`
-Returns 3 alternative routes with:
-- Real weather data (temperature, conditions, wind)
-- Traffic simulation (normal/moderate/heavy)
-- Fuel efficiency metrics
-- CO2 emissions comparison
-- Interactive route geometries for map display
-
-## 📊 Route Metrics
-
-The system calculates:
-- **Fuel Consumption**: Based on distance, elevation, and traffic
-- **CO2 Emissions**: Calculated from fuel usage (2.31 kg CO2/liter)
-- **Cost**: Estimated fuel cost ($1.50/liter)
-- **Distance**: Actual road distance using routing API
-- **Elevation Gain**: Simulated terrain data
-- **Estimated Time**: Traffic-adjusted travel time
-
-## 🧮 Fuel Efficiency Model
-
-Base calculation:
-```
-base_fuel = distance_km × 0.08 L/km
-elevation_penalty = (elevation_m / 100) × 15% × base_fuel
-traffic_multiplier = {normal: 1.0, moderate: 1.25, heavy: 1.6}
-total_fuel = (base_fuel + elevation_penalty) × traffic_multiplier
-```
-
-## 🎨 Map Features
-
-- **Custom Markers**: Green (A) for origin, Red (B) for destination
-- **Route Highlighting**: Green line with shadow effect for depth
-- **Auto-zoom**: Automatically fits route in viewport
-- **Interactive Popups**: Click markers for location details
-
-## 🚦 Traffic Simulation
-
-The system simulates traffic conditions:
-- **Normal**: Standard routing and fuel consumption
-- **Moderate**: 25% increase in fuel usage, 25% slower
-- **Heavy**: 60% increase in fuel usage, 50% slower
-
-Real-time monitoring triggers automatic rerouting when heavy traffic is detected.
-
-## 📱 Voice AI Integration
-
-Voice features include:
-- Route calculation announcements
-- Metric readouts (distance, fuel, CO2)
-- Driving efficiency tips
-- Traffic alerts and rerouting notifications
-- Toggle on/off for different environments
+---
 
 ## 🐳 Docker Deployment
 
-The easiest way to run the application is with Docker Compose.
+Run the entire stack using Docker Compose:
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/yourusername/ecoroute-optimizer.git
-   cd ecoroute-optimizer
-   ```
-
-2. **Setup Environment**:
-   Copy the example environment file and add your ElevenLabs API Key (optional, for premium voice):
-   ```bash
-   cp .env.example .env
-   # Edit .env and paste your key: ELEVENLABS_API_KEY=your_key_here
-   ```
-
-3. **Run with Docker Compose**:
-   ```bash
-   docker-compose up --build
-   ```
-
-4. **Access the App**:
-   Open [http://localhost:8000/frontend.html](http://localhost:8000/frontend.html)
-
-## 🔮 Future Enhancements
-
-- [ ] Integration with live traffic APIs (Google Maps, HERE)
-- [ ] Real elevation data from SRTM or similar
-- [ ] Alternative route comparison (fastest vs. most efficient)
-- [ ] Historical traffic pattern analysis
-- [ ] Electric vehicle optimization mode
-- [ ] Multi-stop route optimization
-- [ ] User preferences and vehicle profiles
-- [ ] Mobile app version
-
-## 🏗️ Architecture
-
-```
-┌─────────────┐         ┌──────────────┐         ┌─────────────┐
-│  Frontend   │────────▶│  FastAPI     │────────▶│  Routing    │
-│  (HTML/JS)  │◀────────│  Backend     │◀────────│  Engine     │
-└─────────────┘         └──────────────┘         └─────────────┘
-      │                        │
-      │                        │
-      ▼                        ▼
-┌─────────────┐         ┌──────────────┐
-│ Leaflet.js  │         │   Fuel       │
-│   + OSRM    │         │  Calculator  │
-└─────────────┘         └──────────────┘
+```bash
+docker-compose up --build
 ```
 
-## 📝 License
+---
 
-MIT License - feel free to use for your hackathon!
-
-## 🤝 Contributing
-
-This is a hackathon project, but contributions are welcome:
-1. Fork the repo
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## 👥 Team
-
-Built for the Logitech Hackathon
+## 📜 License
+This project is licensed under the MIT License.
