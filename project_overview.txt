@@ -1,0 +1,56 @@
+# 🌿 EcoRoute Optimizer - Project Overview
+
+## 🎯 Project Concept
+EcoRoute Optimizer is a real-time route optimization system designed to minimize carbon emissions and maximize fuel efficiency. It calculates the most eco-friendly route between two points by considering distance, elevation gain, and traffic conditions.
+
+## 🛠️ Tech Stack
+- **Backend**: Python 3.9+ using **FastAPI** for high-performance asynchronous API endpoints.
+- **Frontend**: Single-page application using **HTML5, CSS3, and Vanilla JavaScript**.
+- **Mapping & Visualization**: 
+    - **Leaflet.js**: For interactive map rendering.
+    - **OpenStreetMap**: For map tiles.
+    - **Nominatim API**: For geocoding (converting addresses to coordinates).
+    - **OSRM (Open Source Routing Machine)**: For calculating actual road routes.
+- **Voice AI**: **Web Speech API** for hands-free voice feedback and alerts.
+- **Deployment**: Dockerized environment with automated start scripts.
+
+## 🏗️ Architecture & Component Interaction
+1. **Frontend (`frontend.html`)**:
+   - Provides a search interface with autocomplete for origin and destination.
+   - Communicates with the Nominatim API for location data.
+   - Sends route requests to the FastAPI backend.
+   - Displays the route on an interactive Leaflet map using OSRM data.
+   - Provides voice feedback for metrics and driving tips.
+
+2. **Backend (`main.py`)**:
+   - Exposes RESTful endpoints (`/calculate-route`, `/compare-routes`, `/recalculate`).
+   - Implements the **Fuel Efficiency Model**.
+   - Handles route logic and coordinates distance calculations using the Haversine formula (as a fallback).
+   - Simulates traffic conditions and suggests efficiency tips.
+
+## 🧮 Fuel Efficiency Model
+The system uses a mathematical model to estimate fuel consumption:
+- **Base Consumption**: 0.08 liters per kilometer (standard vehicle average).
+- **Elevation Penalty**: Fuel consumption increases by 15% for every 100 meters of elevation gain.
+- **Traffic Multipliers**:
+    - **Normal**: 1.0x
+    - **Moderate**: 1.25x
+    - **Heavy**: 1.6x
+- **CO2 Calculation**: 2.31 kg of CO2 is emitted per liter of fuel consumed.
+- **Cost Estimation**: Fixed at $1.50 per liter.
+
+## ✨ Key Features
+- **Real-time Rerouting**: The frontend periodically simulates traffic changes. If heavy traffic is detected, it automatically calls the `/recalculate` endpoint to find a more efficient path.
+- **Voice Feedback**: Spoken updates on distance, fuel savings, and carbon footprint.
+- **Interactive Map**: Custom markers, animated route lines, and auto-zooming.
+- **Smart Driving Tips**: Context-aware recommendations (e.g., "Avoid rapid acceleration") to further reduce fuel usage.
+
+## 📁 File Structure
+- `main.py`: The heart of the backend logic and API.
+- `frontend.html`: The entire user interface and client-side logic.
+- `requirements.txt`: Python dependencies (`fastapi`, `uvicorn`).
+- `Dockerfile` & `start.sh`: Setup and execution environment.
+- `README.md`: Comprehensive documentation.
+
+## 🚀 How to use this context
+When working with this project, focus on enhancing the **Fuel Efficiency Model**, integrating **real-world elevation/traffic APIs**, or expanding the **Voice AI** capabilities. The frontend and backend are decoupled, communicating via JSON over HTTP.
