@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Tuple
 import random
 from enum import Enum
 import math
-import requests
+import httpx
 from datetime import datetime
 
 # Import core logic
@@ -82,7 +82,7 @@ class AlternativeRoute(BaseModel):
 
 # --- Helper Logic ---
 
-def process_route_data(r_data, origin, destination, origin_lat, origin_lng, dest_lat, dest_lng):
+async def process_route_data(r_data, origin, destination, origin_lat, origin_lng, dest_lat, dest_lng):
     """
     Helper to process raw OSRM route data into enriched RouteMetrics using core.py services.
     """
@@ -93,10 +93,10 @@ def process_route_data(r_data, origin, destination, origin_lat, origin_lng, dest
 
     # 2. Get Real Environment Data
     # Elevation (Sampled from route geometry)
-    ascent, descent = ElevationService.get_route_elevation_stats(geometry)
+    ascent, descent = await ElevationService.get_route_elevation_stats(geometry)
     
     # Weather (At origin)
-    weather = WeatherService.get_weather(origin_lat, origin_lng)
+    weather = await WeatherService.get_weather(origin_lat, origin_lng)
     
     # Traffic (Inferred or Real)
     mid_point = geometry[len(geometry)//2] if geometry else [origin_lng, origin_lat]
@@ -163,35 +163,41 @@ async def calculate_route(request: RouteRequest):
             detail="Address not found. Please add a city name (e.g. Hyderabad) for better results."
         )
 
-    # Fetch Routes
-    routes_data = RouteFinder.get_routes(request.origin_lat, request.origin_lng, request.dest_lat, request.dest_lng)
-    if not routes_data:
-        raise HTTPException(status_code=404, detail="No routes found")
-    
-    # Pick the first one (usually fastest/best by OSRM default)
-    processed = process_route_data(
-        routes_data[0], 
-        request.origin, request.destination,
-        request.origin_lat, request.origin_lng, 
-        request.dest_lat, request.dest_lng
-    )
-    
-    tips = [
-        "Maintain steady speed for optimal efficiency",
-        "Coast when approaching stops to save fuel",
-        "Check tire pressure before long trips"
-    ]
+    try:
+        # Fetch Routes
+        routes_data = await RouteFinder.get_routes(request.origin_lat, request.origin_lng, request.dest_lat, request.dest_lng)
+        if not routes_data:
+            raise HTTPException(status_code=404, detail="No routes found for the given locations.")
+        
+        # Pick the first one (usually fastest/best by OSRM default)
+        processed = await process_route_data(
+            routes_data[0], 
+            request.origin, request.destination,
+            request.origin_lat, request.origin_lng, 
+            request.dest_lat, request.dest_lng
+        )
+        
+        tips = [
+            "Maintain steady speed for optimal efficiency",
+            "Coast when approaching stops to save fuel",
+            "Check tire pressure before long trips"
+        ]
 
-    return RouteResponse(
-        origin=request.origin,
-        destination=request.destination,
-        metrics=processed["metrics"],
-        traffic_condition=processed["traffic"].value,
-        waypoints=processed["waypoints"],
-        tips=tips
-    )
+        return RouteResponse(
+            origin=request.origin,
+            destination=request.destination,
+            metrics=processed["metrics"],
+            traffic_condition=processed["traffic"].value,
+            waypoints=processed["waypoints"],
+            tips=tips
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Routing Error: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while calculating the route. Please try again.")
 
-def fetch_osrm_route(coords: List[Tuple[float, float]]) -> List[dict]:
+async def fetch_osrm_route(coords: List[Tuple[float, float]]) -> List[dict]:
     """
     Fetch route from OSRM supporting multiple waypoints.
     coords: List of (lat, lng) tuples.
@@ -206,7 +212,8 @@ def fetch_osrm_route(coords: List[Tuple[float, float]]) -> List[dict]:
             "geometries": "geojson",
             "overview": "full"
         }
-        response = requests.get(url, params=params, timeout=5)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, params=params, timeout=5)
         data = response.json()
         if data.get("code") == "Ok" and "routes" in data:
             return data["routes"]
@@ -247,180 +254,160 @@ def get_deviation_point(olat, olng, dlat, dlng, offset_scale=0.05) -> Tuple[floa
 async def get_alternative_routes(request: RouteRequest):
     """Get 3 PHYSICALLY DISTINCT routes: Efficient, Fastest, Balanced"""
     if not (request.origin_lat and request.origin_lng and request.dest_lat and request.dest_lng):
-        raise HTTPException(status_code=400, detail="Coordinates required")
-
-    unique_routes = []
-    seen_geometries = set()
-
-    def add_route_if_new(r_data):
-        # Create a rough hash of geometry to detect duplicates
-        # Sampling every 5th point
-        geo = r_data.get("geometry", {}).get("coordinates", [])
-        if not geo: return
-        
-        # Simple hash: start + end + length + middle
-        sig = f"{len(geo)}-{geo[0]}-{geo[-1]}-{geo[len(geo)//2]}"
-        
-        if sig not in seen_geometries:
-            seen_geometries.add(sig)
-            unique_routes.append(r_data)
-
-    # 1. Try Standard Alternatives
-    initial_routes = RouteFinder.get_routes(request.origin_lat, request.origin_lng, request.dest_lat, request.dest_lng)
-    for r in initial_routes:
-        add_route_if_new(r)
-
-    # 2. Force Diversity if needed (Via Points)
-    # Strategy: Compute deviations to force left/right paths
-    # Scale offset based on distance (approx 0.1 deg ~ 10km)
-    dist_approx = math.sqrt((request.origin_lat - request.dest_lat)**2 + (request.origin_lng - request.dest_lng)**2)
-    scale = max(0.02, dist_approx * 0.2) # Dynamic scale
-
-    if len(unique_routes) < 3:
-        # Deviation 1 (Left)
-        via1 = get_deviation_point(request.origin_lat, request.origin_lng, request.dest_lat, request.dest_lng, scale)
-        r_dev1 = fetch_osrm_route([(request.origin_lat, request.origin_lng), via1, (request.dest_lat, request.dest_lng)])
-        for r in r_dev1: add_route_if_new(r)
-
-    if len(unique_routes) < 3:
-        # Deviation 2 (Right)
-        via2 = get_deviation_point(request.origin_lat, request.origin_lng, request.dest_lat, request.dest_lng, -scale)
-        r_dev2 = fetch_osrm_route([(request.origin_lat, request.origin_lng), via2, (request.dest_lat, request.dest_lng)])
-        for r in r_dev2: add_route_if_new(r)
-
-    # 3. Process all found routes
-    processed_candidates = []
-    for r_data in unique_routes:
-        processed = process_route_data(
-            r_data, request.origin, request.destination,
-            request.origin_lat, request.origin_lng,
-            request.dest_lat, request.dest_lng
+        raise HTTPException(
+            status_code=400, 
+            detail="Address not found. Please add a city name (e.g. Hyderabad) for better results."
         )
-        processed_candidates.append(processed)
 
-    # 4. Strictly Assign Roles based on Data
-    if not processed_candidates:
-        raise HTTPException(status_code=404, detail="No unique routes found")
+    try:
+        unique_routes = []
+        seen_geometries = set()
 
-    # Find absolute bests regardless of previous sorting
-    candidates_by_time = sorted(processed_candidates, key=lambda x: x["metrics"].estimated_time_min)
-    true_fastest = candidates_by_time[0]
-    
-    candidates_by_co2 = sorted(processed_candidates, key=lambda x: x["metrics"].co2_kg)
-    true_efficient = candidates_by_co2[0]
-    
-    final_selection = []
+        def add_route_if_new(r_data):
+            # Create a rough hash of geometry to detect duplicates
+            # Sampling every 5th point
+            geo = r_data.get("geometry", {}).get("coordinates", [])
+            if not geo: return
+            
+            # Simple hash: start + end + length + middle
+            sig = f"{len(geo)}-{geo[0]}-{geo[-1]}-{geo[len(geo)//2]}"
+            
+            if sig not in seen_geometries:
+                seen_geometries.add(sig)
+                unique_routes.append(r_data)
 
-    # Check for Overlap (Same Geometry check)
-    # Using the first point + length + middle point as a proxy for identity
-    def get_geo_sig(r):
-        g = r["geometry"]
-        if not g: return "empty"
-        return f"{len(g)}-{g[0]}-{g[-1]}"
+        # 1. Try Standard Alternatives
+        initial_routes = await RouteFinder.get_routes(request.origin_lat, request.origin_lng, request.dest_lat, request.dest_lng)
+        for r in initial_routes:
+            add_route_if_new(r)
 
-    is_same_route = get_geo_sig(true_fastest) == get_geo_sig(true_efficient)
+        # 2. Force Diversity if needed (Via Points)
+        # Strategy: Compute deviations to force left/right paths
+        # Scale offset based on distance (approx 0.1 deg ~ 10km)
+        dist_approx = math.sqrt((request.origin_lat - request.dest_lat)**2 + (request.origin_lng - request.dest_lng)**2)
+        scale = max(0.02, dist_approx * 0.2) # Dynamic scale
 
-    if is_same_route:
-        # CASE: The Efficient route IS the Fastest route
-        # User requirement: "display as fastest and efficitit and no need for a balanced route"
-        combined_metrics = true_fastest["metrics"]
+        if len(unique_routes) < 3:
+            # Deviation 1 (Left)
+            via1 = get_deviation_point(request.origin_lat, request.origin_lng, request.dest_lat, request.dest_lng, scale)
+            r_dev1 = await fetch_osrm_route([(request.origin_lat, request.origin_lng), via1, (request.dest_lat, request.dest_lng)])
+            for r in r_dev1: add_route_if_new(r)
+
+        if len(unique_routes) < 3:
+            # Deviation 2 (Right)
+            via2 = get_deviation_point(request.origin_lat, request.origin_lng, request.dest_lat, request.dest_lng, -scale)
+            r_dev2 = await fetch_osrm_route([(request.origin_lat, request.origin_lng), via2, (request.dest_lat, request.dest_lng)])
+            for r in r_dev2: add_route_if_new(r)
+
+        # 3. Process all found routes
+        processed_candidates = []
+        for r_data in unique_routes:
+            processed = await process_route_data(
+                r_data, request.origin, request.destination,
+                request.origin_lat, request.origin_lng,
+                request.dest_lat, request.dest_lng
+            )
+            processed_candidates.append(processed)
+
+        # 4. Strictly Assign Roles based on Data
+        if not processed_candidates:
+            raise HTTPException(status_code=404, detail="No unique routes found")
+
+        # Find absolute bests regardless of previous sorting
+        candidates_by_time = sorted(processed_candidates, key=lambda x: x["metrics"].estimated_time_min)
+        true_fastest = candidates_by_time[0]
         
-        final_selection.append(AlternativeRoute(
-            route_name="Fastest & Most Efficient",
-            route_type="most_efficient", # Green color priority
-            metrics=combined_metrics,
-            waypoints=true_fastest["waypoints"],
-            geometry=true_fastest["geometry"],
-            weather_summary=true_fastest["weather_summary"],
-            traffic_summary=f"{true_fastest['traffic'].value.title()} Traffic"
-        ))
+        candidates_by_co2 = sorted(processed_candidates, key=lambda x: x["metrics"].co2_kg)
+        true_efficient = candidates_by_co2[0]
         
-        # We stop here to strictly follow "no need for a balanced route"
-        # However, purely returning 1 route might look broken in a UI designed for 3.
-        # But user said "only in this specific case". So be it.
-        
-    else:
-        # CASE: Distinct routes exist
-        
-        # 1. Most Efficient
-        final_selection.append(AlternativeRoute(
-            route_name="Most Efficient",
-            route_type="most_efficient",
-            metrics=true_efficient["metrics"],
-            waypoints=true_efficient["waypoints"],
-            geometry=true_efficient["geometry"],
-            weather_summary=true_efficient["weather_summary"],
-            traffic_summary=f"{true_efficient['traffic'].value.title()} Traffic"
-        ))
+        final_selection = []
 
-        # 2. Fastest Route
-        final_selection.append(AlternativeRoute(
-            route_name="Fastest Route",
-            route_type="fastest",
-            metrics=true_fastest["metrics"],
-            waypoints=true_fastest["waypoints"],
-            geometry=true_fastest["geometry"],
-            weather_summary=true_fastest["weather_summary"],
-            traffic_summary=f"{true_fastest['traffic'].value.title()} Traffic"
-        ))
+        # Check for Overlap (Same Geometry check)
+        # Using the first point + length + middle point as a proxy for identity
+        def get_geo_sig(r):
+            g = r["geometry"]
+            if not g: return "empty"
+            return f"{len(g)}-{g[0]}-{g[-1]}"
 
-        # 3. Balanced Option
-        # Find best score that isn't one of the above
-        remaining = [c for c in processed_candidates if get_geo_sig(c) != get_geo_sig(true_efficient) and get_geo_sig(c) != get_geo_sig(true_fastest)]
-        
-        if remaining:
-            remaining.sort(key=lambda x: x["metrics"].total_cost_score)
-            balanced = remaining[0]
+        is_same_route = get_geo_sig(true_fastest) == get_geo_sig(true_efficient)
+
+        if is_same_route:
+            # CASE: The Efficient route IS the Fastest route
+            combined_metrics = true_fastest["metrics"]
             
             final_selection.append(AlternativeRoute(
-                route_name="Balanced Option",
-                route_type="balanced",
-                metrics=balanced["metrics"],
-                waypoints=balanced["waypoints"],
-                geometry=balanced["geometry"],
-                weather_summary=balanced["weather_summary"],
-                traffic_summary=f"{balanced['traffic'].value.title()} Traffic"
+                route_name="Fastest & Most Efficient",
+                route_type="most_efficient", # Green color priority
+                metrics=combined_metrics,
+                waypoints=true_fastest["waypoints"],
+                geometry=true_fastest["geometry"],
+                weather_summary=true_fastest["weather_summary"],
+                traffic_summary=f"{true_fastest['traffic'].value.title()} Traffic"
             ))
+            
         else:
-            # If no 3rd distinct route exists (rare with force-diversity), we skip it or show a runner up.
-            # Let's show the runner up for efficiency as Balanced if we have to.
-            if len(processed_candidates) > 2:
-                 # Just pick the one that wasn't picked
-                 pass 
+            # CASE: Distinct routes exist
+            
+            # 1. Most Efficient
+            final_selection.append(AlternativeRoute(
+                route_name="Most Efficient",
+                route_type="most_efficient",
+                metrics=true_efficient["metrics"],
+                waypoints=true_efficient["waypoints"],
+                geometry=true_efficient["geometry"],
+                weather_summary=true_efficient["weather_summary"],
+                traffic_summary=f"{true_efficient['traffic'].value.title()} Traffic"
+            ))
 
-    # Rounding for display
-    for alt in final_selection:
-        alt.metrics.co2_kg = round(alt.metrics.co2_kg, 3)
-        alt.metrics.fuel_liters = round(alt.metrics.fuel_liters, 3)
-        alt.metrics.cost_usd = round(alt.metrics.cost_usd, 3)
+            # 2. Fastest Route
+            final_selection.append(AlternativeRoute(
+                route_name="Fastest Route",
+                route_type="fastest",
+                metrics=true_fastest["metrics"],
+                waypoints=true_fastest["waypoints"],
+                geometry=true_fastest["geometry"],
+                weather_summary=true_fastest["weather_summary"],
+                traffic_summary=f"{true_fastest['traffic'].value.title()} Traffic"
+            ))
 
-    # Weather
-    origin_weather = WeatherService.get_weather(request.origin_lat, request.origin_lng)
-    dest_weather = WeatherService.get_weather(request.dest_lat, request.dest_lng)
+            # 3. Balanced Option
+            remaining = [c for c in processed_candidates if get_geo_sig(c) != get_geo_sig(true_efficient) and get_geo_sig(c) != get_geo_sig(true_fastest)]
+            
+            if remaining:
+                remaining.sort(key=lambda x: x["metrics"].total_cost_score)
+                balanced = remaining[0]
+                
+                final_selection.append(AlternativeRoute(
+                    route_name="Balanced Option",
+                    route_type="balanced",
+                    metrics=balanced["metrics"],
+                    waypoints=balanced["waypoints"],
+                    geometry=balanced["geometry"],
+                    weather_summary=balanced["weather_summary"],
+                    traffic_summary=f"{balanced['traffic'].value.title()} Traffic"
+                ))
 
-    return {
-        "alternatives": [alt.model_dump() for alt in final_selection],
-        "origin_weather": origin_weather.model_dump() if origin_weather else None,
-        "destination_weather": dest_weather.model_dump() if dest_weather else None,
-        "current_time": datetime.now().isoformat()
-    }
+        # Rounding for display
+        for alt in final_selection:
+            alt.metrics.co2_kg = round(alt.metrics.co2_kg, 3)
+            alt.metrics.fuel_liters = round(alt.metrics.fuel_liters, 3)
+            alt.metrics.cost_usd = round(alt.metrics.cost_usd, 3)
 
-    # Rounding for display
-    for alt in final_selection:
-        alt.metrics.co2_kg = round(alt.metrics.co2_kg, 3)
-        alt.metrics.fuel_liters = round(alt.metrics.fuel_liters, 3)
-        alt.metrics.cost_usd = round(alt.metrics.cost_usd, 3)
+        # Weather
+        origin_weather = await WeatherService.get_weather(request.origin_lat, request.origin_lng)
+        dest_weather = await WeatherService.get_weather(request.dest_lat, request.dest_lng)
 
-    # Weather
-    origin_weather = WeatherService.get_weather(request.origin_lat, request.origin_lng)
-    dest_weather = WeatherService.get_weather(request.dest_lat, request.dest_lng)
-
-    return {
-        "alternatives": [alt.model_dump() for alt in final_selection],
-        "origin_weather": origin_weather.model_dump() if origin_weather else None,
-        "destination_weather": dest_weather.model_dump() if dest_weather else None,
-        "current_time": datetime.now().isoformat()
-    }
+        return {
+            "alternatives": [alt.model_dump() for alt in final_selection],
+            "origin_weather": origin_weather.model_dump() if origin_weather else None,
+            "destination_weather": dest_weather.model_dump() if dest_weather else None,
+            "current_time": datetime.now().isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Alternatives Error: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while finding alternative routes.")
 
 @app.post("/recalculate")
 async def recalculate_route(request: RouteRequest):
@@ -431,8 +418,6 @@ async def recalculate_route(request: RouteRequest):
         "route": await calculate_route(request)
     }
 
-    return {"status": "healthy", "service": "EcoRoute API (Core Integrated)"}
-
 class TTSRequest(BaseModel):
     text: str
 
@@ -442,28 +427,23 @@ async def text_to_speech(request: TTSRequest):
     Convert text to speech using Microsoft Edge TTS (Free, High Quality)
     """
     try:
-        # Voice: en-US-AriaNeural, en-GB-SoniaNeural, etc.
         voice = "en-US-AriaNeural" 
         communicate = edge_tts.Communicate(request.text, voice)
         
-        # Create a temporary file to save the audio
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_file:
             tmp_path = tmp_file.name
             
         await communicate.save(tmp_path)
         
-        # Read the file back into memory
         with open(tmp_path, "rb") as f:
             audio_data = f.read()
             
-        # Clean up temp file
         os.unlink(tmp_path)
             
         return Response(content=audio_data, media_type="audio/mpeg")
 
     except Exception as e:
         print(f"TTS Error: {e}")
-        # Return a 500 but log it clearly
         raise HTTPException(status_code=500, detail=f"TTS Error: {str(e)}")
 
 if __name__ == "__main__":

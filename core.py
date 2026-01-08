@@ -1,7 +1,7 @@
 import requests
+import httpx
 import math
 import random
-import os
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Tuple
 from enum import Enum
@@ -45,7 +45,7 @@ class WeatherService:
     """Fetch weather data along route with robust fallbacks"""
     
     @staticmethod
-    def get_weather(lat: float, lon: float) -> WeatherData:
+    async def get_weather(lat: float, lon: float) -> WeatherData:
         """
         Primary: Open-Meteo API
         Fallback: Climatological average / Safe defaults
@@ -58,7 +58,9 @@ class WeatherService:
                 "current": "temperature_2m,precipitation,wind_speed_10m,weathercode",
                 "timezone": "auto"
             }
-            response = requests.get(url, params=params, timeout=3)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, timeout=3)
+            
             if response.status_code == 200:
                 data = response.json()
                 if "current" in data:
@@ -100,12 +102,13 @@ class ElevationService:
     """Fetch elevation data and compute stats"""
     
     @staticmethod
-    def get_elevation_point(lat: float, lon: float) -> float:
+    async def get_elevation_point(lat: float, lon: float) -> float:
         """Fetch single point elevation"""
         try:
             url = "https://api.open-elevation.com/api/v1/lookup"
             payload = {"locations": [{"latitude": lat, "longitude": lon}]}
-            response = requests.post(url, json=payload, timeout=2)
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json=payload, timeout=2)
             if response.status_code == 200:
                 data = response.json()
                 if "results" in data and len(data["results"]) > 0:
@@ -115,7 +118,7 @@ class ElevationService:
         return 0.0 # Default if failed
 
     @staticmethod
-    def get_route_elevation_stats(geometry_coords: List[List[float]]) -> Tuple[float, float]:
+    async def get_route_elevation_stats(geometry_coords: List[List[float]]) -> Tuple[float, float]:
         """
         Sample points along the route to calculate ascent and average grade.
         geometry_coords: List of [lon, lat] (GeoJSON format)
@@ -137,7 +140,8 @@ class ElevationService:
         try:
             locations = [{"latitude": p[1], "longitude": p[0]} for p in samples]
             url = "https://api.open-elevation.com/api/v1/lookup"
-            response = requests.post(url, json={"locations": locations}, timeout=3)
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json={"locations": locations}, timeout=3)
             if response.status_code == 200:
                 results = response.json().get("results", [])
                 elevations = [r["elevation"] for r in results]
@@ -280,46 +284,10 @@ class CostModel:
 
 class RouteFinder:
     @staticmethod
-    def get_routes(origin_lat: float, origin_lng: float, dest_lat: float, dest_lng: float) -> List[Dict]:
+    async def get_routes(origin_lat: float, origin_lng: float, dest_lat: float, dest_lng: float) -> List[Dict]:
         """
-        Fetch routes. Tries Google Maps if API key is present, otherwise OSRM.
-        Returns list of dicts with keys: distance, duration, geometry.
+        Fetch routes from OSRM. Returns list of dicts.
         """
-        # Try Google Maps
-        google_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
-        if google_api_key:
-            try:
-                url = "https://maps.googleapis.com/maps/api/directions/json"
-                params = {
-                    "origin": f"{origin_lat},{origin_lng}",
-                    "destination": f"{dest_lat},{dest_lng}",
-                    "key": google_api_key,
-                    "alternatives": "true"
-                }
-                response = requests.get(url, params=params, timeout=5)
-                data = response.json()
-                
-                if data.get("status") == "OK":
-                    routes = []
-                    for r in data.get("routes", []):
-                        if not r.get("legs"): continue
-                        leg = r["legs"][0]
-                        # Decode polyline to [[lng, lat], ...]
-                        poly = r.get("overview_polyline", {}).get("points", "")
-                        coords = RouteFinder.decode_polyline(poly)
-                        
-                        routes.append({
-                            "distance": leg["distance"]["value"], # meters
-                            "duration": leg["duration"]["value"], # seconds
-                            "geometry": {"coordinates": coords},
-                            "weight_name": "google"
-                        })
-                    return routes
-            except Exception as e:
-                print(f"Google Maps Error: {e}")
-                pass
-
-        # Fallback to OSRM
         try:
             url = f"https://router.project-osrm.org/route/v1/driving/{origin_lng},{origin_lat};{dest_lng},{dest_lat}"
             params = {
@@ -328,7 +296,8 @@ class RouteFinder:
                 "geometries": "geojson",
                 "overview": "full"
             }
-            response = requests.get(url, params=params, timeout=5)
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, params=params, timeout=5)
             data = response.json()
             
             if data.get("code") == "Ok" and "routes" in data:
@@ -344,41 +313,6 @@ class RouteFinder:
             "geometry": {"coordinates": [[origin_lng, origin_lat], [dest_lng, dest_lat]]},
             "weight_name": "fallback"
         }]
-
-    @staticmethod
-    def decode_polyline(polyline_str):
-        index = 0
-        lat = 0
-        lng = 0
-        coordinates = []
-        length = len(polyline_str)
-        while index < length:
-            shift = 0
-            result = 0
-            while True:
-                byte = ord(polyline_str[index]) - 63
-                index += 1
-                result |= (byte & 0x1f) << shift
-                shift += 5
-                if byte < 0x20:
-                    break
-            dlat = ~(result >> 1) if (result & 1) else (result >> 1)
-            lat += dlat
-            
-            shift = 0
-            result = 0
-            while True:
-                byte = ord(polyline_str[index]) - 63
-                index += 1
-                result |= (byte & 0x1f) << shift
-                shift += 5
-                if byte < 0x20:
-                    break
-            dlng = ~(result >> 1) if (result & 1) else (result >> 1)
-            lng += dlng
-            
-            coordinates.append([lng * 1e-5, lat * 1e-5])
-        return coordinates
 
     @staticmethod
     def haversine(lat1, lon1, lat2, lon2):
