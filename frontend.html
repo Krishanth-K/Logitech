@@ -330,6 +330,129 @@
         stroke-dashoffset: 0;
       }
     }
+
+    /* Alternative routes panel */
+    .alternatives-panel {
+      display: none;
+      margin-top: 20px;
+    }
+
+    .alternatives-panel.show {
+      display: block;
+    }
+
+    .route-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      cursor: pointer;
+      transition: all 0.3s;
+      border: 2px solid transparent;
+    }
+
+    .route-card:hover {
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+      transform: translateY(-2px);
+    }
+
+    .route-card.selected {
+      border-color: #4caf50;
+      background: #f1f8f4;
+    }
+
+    .route-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .route-card-title {
+      font-size: 1.2em;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .route-badge {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.85em;
+      font-weight: 600;
+    }
+
+    .route-badge.fastest {
+      background: #e3f2fd;
+      color: #1976d2;
+    }
+
+    .route-badge.balanced {
+      background: #fff3e0;
+      color: #f57c00;
+    }
+
+    .route-badge.eco-friendly {
+      background: #e8f5e9;
+      color: #388e3c;
+    }
+
+    .route-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-bottom: 10px;
+    }
+
+    .route-stat {
+      text-align: center;
+    }
+
+    .route-stat-value {
+      font-size: 1.3em;
+      font-weight: bold;
+      color: #333;
+    }
+
+    .route-stat-label {
+      font-size: 0.8em;
+      color: #666;
+      margin-top: 2px;
+    }
+
+    .route-conditions {
+      display: flex;
+      gap: 15px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #e0e0e0;
+      font-size: 0.9em;
+      color: #666;
+    }
+
+    .weather-widget {
+      background: white;
+      padding: 15px;
+      border-radius: 12px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .weather-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    .weather-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .weather-icon {
+      font-size: 2em;
+    }
   </style>
 </head>
 
@@ -367,6 +490,11 @@
           Find Optimal Route
         </button>
 
+        <button class="btn btn-secondary" id="alternativesBtn" onclick="showAlternativeRoutes()"
+          style="display: none; margin-bottom: 10px">
+          🗺️ Show Alternative Routes
+        </button>
+
         <button class="btn btn-secondary" id="tipBtn" onclick="getDrivingTip()" style="display: none">
           Get Driving Tip
         </button>
@@ -394,6 +522,12 @@
         </div>
 
         <div class="metrics-grid" id="metricsGrid" style="display: none"></div>
+
+        <div class="alternatives-panel" id="alternativesPanel">
+          <h2 style="margin-bottom: 15px">🔀 Alternative Routes</h2>
+          <div id="weatherWidget" class="weather-widget" style="display: none"></div>
+          <div id="routeCards"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -405,6 +539,7 @@
     let trafficCondition = "normal";
     let map = null;
     let routeLayer = null;
+    let shadowLayer = null;
     let originMarker = null;
     let destMarker = null;
 
@@ -583,10 +718,14 @@
         );
 
         document.getElementById("tipBtn").style.display = "block";
+        document.getElementById("alternativesBtn").style.display = "block";
         document.getElementById("trafficStatus").style.display = "block";
 
         // Simulate traffic changes
         startTrafficSimulation();
+
+        // Auto-calculate alternatives
+        await showAlternativeRoutes();
       } catch (error) {
         console.error("Error:", error);
         overlay.classList.remove('show');
@@ -607,7 +746,7 @@
         const url = `https://router.project-osrm.org/route/v1/driving/${start.lon},${start.lat};${end.lon},${end.lat}?overview=full&geometries=geojson`;
         const response = await fetch(url);
         const data = await response.json();
-        
+
         if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
           const route = data.routes[0];
           return {
@@ -629,15 +768,20 @@
 
     async function displayRoute(data) {
       // Clear previous layers
-      if (routeLayer) {
-        map.removeLayer(routeLayer);
+      // Clear previous layers
+      if (routeLayer) map.removeLayer(routeLayer);
+      if (shadowLayer) map.removeLayer(shadowLayer);
+      if (originMarker) map.removeLayer(originMarker);
+      if (destMarker) map.removeLayer(destMarker);
+
+      // Also clear any alternative routes that might be showing
+      if (window.allRouteLayers) {
+        window.allRouteLayers.forEach(layer => map.removeLayer(layer));
+        window.allRouteLayers = [];
       }
-      if (originMarker) {
-        map.removeLayer(originMarker);
-      }
-      if (destMarker) {
-        map.removeLayer(destMarker);
-      }
+
+      // Hide alternatives panel when showing new main route
+      document.getElementById('alternativesPanel').classList.remove('show');
 
       const waypoints = data.waypoints.map(wp => [wp.lat, wp.lng]);
 
@@ -670,7 +814,7 @@
         const routeData = await fetchActualRoute(selectedOrigin, selectedDestination);
         routeCoordinates = routeData.coordinates;
         actualDistance = routeData.distance;
-        
+
         // If we got actual distance, show it
         if (actualDistance) {
           console.log(`Actual route distance: ${actualDistance.toFixed(2)} km`);
@@ -686,7 +830,7 @@
       }).addTo(map);
 
       // Add a shadow/outline effect
-      const shadowLayer = L.polyline(routeCoordinates, {
+      shadowLayer = L.polyline(routeCoordinates, {
         color: '#2e7d32',
         weight: 8,
         opacity: 0.3,
@@ -719,6 +863,35 @@
                 <div class="metric-card">
                     <h3>⛰️ Elevation</h3>
                     <div class="value">${data.metrics.elevation_gain_m}</div>
+                    <div class="unit">meters</div>
+                </div>
+        </div>
+            `;
+    }
+
+    // Helper to update metrics display reused by alternatives
+    function displayMetrics(metrics) {
+      const metricsGrid = document.getElementById("metricsGrid");
+      metricsGrid.style.display = "grid";
+      metricsGrid.innerHTML = `
+                <div class="metric-card">
+                    <h3>⛽ Fuel</h3>
+                    <div class="value">${metrics.fuel_liters}</div>
+                    <div class="unit">liters ($${metrics.cost_usd})</div>
+                </div>
+                <div class="metric-card">
+                    <h3>🌿 CO₂ Emissions</h3>
+                    <div class="value">${metrics.co2_kg}</div>
+                    <div class="unit">kg</div>
+                </div>
+                <div class="metric-card">
+                    <h3>📏 Distance</h3>
+                    <div class="value">${metrics.distance_km}</div>
+                    <div class="unit">km</div>
+                </div>
+                <div class="metric-card">
+                    <h3>⛰️ Elevation</h3>
+                    <div class="value">${metrics.elevation_gain_m}</div>
                     <div class="unit">meters</div>
                 </div>
             `;
@@ -780,6 +953,198 @@
 
       dot.className = `traffic-dot ${trafficCondition}`;
       text.textContent = `${trafficCondition.charAt(0).toUpperCase() + trafficCondition.slice(1)} Traffic`;
+    }
+
+    // Alternative Routes Functions
+    let alternativeRoutes = [];
+    let allRouteLayers = [];
+
+    async function showAlternativeRoutes() {
+      if (!selectedOrigin || !selectedDestination) {
+        // Fallback if not selected via autocomplete but computed
+        if (!currentRoute) {
+          showAlert("⚠️ Please calculate a route first");
+          return;
+        }
+      }
+
+      // Hide the initial single route layer to avoid overlap/duplication
+      if (routeLayer) map.removeLayer(routeLayer);
+      if (shadowLayer) map.removeLayer(shadowLayer);
+
+      const overlay = document.getElementById("routeOverlay");
+      overlay.classList.add('show');
+      overlay.querySelector('p').textContent = 'Fetching alternative routes...';
+
+      try {
+        const response = await fetch(`${API_URL}/alternative-routes`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            origin: currentRoute.origin,
+            destination: currentRoute.destination,
+            origin_lat: selectedOrigin.lat,
+            origin_lng: selectedOrigin.lon,
+            dest_lat: selectedDestination.lat,
+            dest_lng: selectedDestination.lon
+          })
+        });
+
+        const data = await response.json();
+        alternativeRoutes = data.alternatives;
+
+        // Display weather widget
+        displayWeatherWidget(data.origin_weather, data.destination_weather);
+
+        // Display route cards
+        displayRouteCards(alternativeRoutes);
+
+        // Show alternatives panel
+        document.getElementById('alternativesPanel').classList.add('show');
+
+        speak(`Found ${alternativeRoutes.length} alternative routes`);
+        overlay.classList.remove('show');
+      } catch (error) {
+        console.error('Error fetching alternatives:', error);
+        showAlert('❌ Error fetching alternative routes');
+        overlay.classList.remove('show');
+      }
+    }
+
+    function displayWeatherWidget(origin, destination) {
+      if (!origin || !destination) return;
+
+      const widget = document.getElementById('weatherWidget');
+      widget.style.display = 'block';
+
+      const weatherIcons = {
+        'Clear': '☀️', 'Mainly Clear': '🌤️', 'Partly Cloudy': '⛅', 'Overcast': '☁️',
+        'Foggy': '🌫️', 'Drizzle': '🌧️', 'Rain': '🌧️', 'Snow': '❄️', 'Thunderstorm': '⛈️'
+      };
+
+      widget.innerHTML = `
+        <h3 style="margin-bottom: 10px; color: #333;">🌤️ Weather Conditions</h3>
+        <div class="weather-grid">
+          <div class="weather-item">
+            <div class="weather-icon">${weatherIcons[origin.condition] || '☁️'}</div>
+            <div>
+              <div style="font-weight: 600;">Origin</div>
+              <div>${origin.temperature.toFixed(1)}°C, ${origin.condition}</div>
+              <div style="font-size: 0.85em; color: #666;">Wind: ${origin.wind_speed} km/h</div>
+            </div>
+          </div>
+          <div class="weather-item">
+            <div class="weather-icon">${weatherIcons[destination.condition] || '☁️'}</div>
+            <div>
+              <div style="font-weight: 600;">Destination</div>
+              <div>${destination.temperature.toFixed(1)}°C, ${destination.condition}</div>
+              <div style="font-size: 0.85em; color: #666;">Wind: ${destination.wind_speed} km/h</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function displayRouteCards(routes) {
+      const container = document.getElementById('routeCards');
+      container.innerHTML = '';
+
+      routes.forEach((route, index) => {
+        const card = document.createElement('div');
+        card.className = 'route-card';
+        if (index === 0) card.classList.add('selected');
+
+        const savings = routes[0].metrics.co2_kg - route.metrics.co2_kg;
+        const savingsText = savings > 0 ? `<span style="color: #388e3c;">↓ Save ${savings.toFixed(1)} kg CO₂</span>` : '';
+
+        card.innerHTML = `
+          <div class="route-card-header">
+            <div class="route-card-title">${route.route_name}</div>
+            <span class="route-badge ${route.route_type}">${route.route_type.toUpperCase()}</span>
+          </div>
+          <div class="route-stats">
+            <div class="route-stat">
+              <div class="route-stat-value">${route.metrics.distance_km}</div>
+              <div class="route-stat-label">km</div>
+            </div>
+            <div class="route-stat">
+              <div class="route-stat-value">${route.metrics.estimated_time_min}</div>
+              <div class="route-stat-label">minutes</div>
+            </div>
+            <div class="route-stat">
+              <div class="route-stat-value">${route.metrics.fuel_liters}</div>
+              <div class="route-stat-label">liters</div>
+            </div>
+          </div>
+          <div class="route-conditions">
+            <div>🚦 ${route.traffic_summary}</div>
+            <div>🌤️ ${route.weather_summary || 'N/A'}</div>
+          </div>
+          <div style="margin-top: 10px; color: #666; font-size: 0.9em;">
+            ⛽ $${route.metrics.cost_usd} • 🌿 ${route.metrics.co2_kg} kg CO₂ ${savingsText}
+          </div>
+        `;
+
+        card.onclick = () => selectRoute(index);
+        container.appendChild(card);
+      });
+
+      // Show first route by default
+      if (routes.length > 0) {
+        selectRoute(0);
+      }
+    }
+
+    function selectRoute(index) {
+      // Update card selection
+      document.querySelectorAll('.route-card').forEach((card, i) => {
+        card.classList.toggle('selected', i === index);
+      });
+
+      // Clear existing route layers
+      allRouteLayers.forEach(layer => map.removeLayer(layer));
+      allRouteLayers = [];
+
+      const route = alternativeRoutes[index];
+
+      // Loop through all alternatives and draw them
+      alternativeRoutes.forEach((r, i) => {
+        // Skip if no geometry
+        if (!r.geometry || r.geometry.length === 0) return;
+
+        const isSelected = i === index;
+
+        // Define style based on selection
+        const color = isSelected ? '#2e7d32' : '#a5d6a7';
+        const opacity = isSelected ? 1.0 : 0.6;
+        const weight = isSelected ? 8 : 6;
+
+        const polyline = L.polyline(r.geometry, {
+          color: color,
+          weight: weight,
+          opacity: opacity,
+          lineJoin: 'round'
+        }).addTo(map);
+
+        if (isSelected) {
+          polyline.bringToFront();
+          // Update displayed metrics for selected route
+          displayMetrics(r.metrics);
+        }
+
+        allRouteLayers.push(polyline);
+      });
+
+      // Fit bounds to all routes
+      if (allRouteLayers.length > 0) {
+        const group = new L.featureGroup(allRouteLayers);
+        map.fitBounds(group.getBounds(), { padding: [50, 50] });
+      }
+
+      speak(`${route.route_name}: ${route.metrics.distance_km} kilometers, ${route.metrics.estimated_time_min} minutes, ${route.metrics.fuel_liters} liters of fuel`);
+
+      // Show alternativesBtn after displaying routes
+      document.getElementById('alternativesBtn').style.display = 'block';
     }
   </script>
 </body>

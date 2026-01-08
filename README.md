@@ -13,11 +13,14 @@ Optimize vehicle routes to minimize carbon emissions and maximize fuel efficienc
 - 🗺️ **Interactive Map**: Real-time route visualization using OpenStreetMap and Leaflet
 - 📍 **Smart Location Search**: Autocomplete for addresses using Nominatim geocoding
 - 🛣️ **Actual Route Rendering**: Uses OSRM for real road routes (not straight lines)
+- 🔀 **Alternative Routes**: Compare up to 3 different routes (fastest, balanced, eco-friendly)
+- 🌤️ **Real Weather Data**: Live weather conditions at origin and destination via Open-Meteo
+- 🚦 **Traffic Simulation**: Time-based traffic conditions (normal, moderate, heavy)
 - ⛽ **Fuel Efficiency Metrics**: Calculate fuel consumption, CO2 emissions, and cost
-- 🚦 **Traffic-Aware Routing**: Adjusts calculations based on traffic conditions
 - 🔊 **Voice AI Integration**: Text-to-speech feedback for hands-free operation
 - 🔄 **Real-time Rerouting**: Automatically recalculates when traffic conditions change
 - 💡 **Smart Driving Tips**: Context-aware fuel efficiency recommendations
+- 📊 **Route Comparison**: Side-by-side comparison with savings calculator
 
 ## 🛠️ Tech Stack
 
@@ -71,11 +74,19 @@ Optimize vehicle routes to minimize carbon emissions and maximize fuel efficienc
    - View the route on the interactive map
    - See fuel consumption, CO2 emissions, distance, and elevation metrics
 
-3. **Voice Feedback**:
+3. **Compare Alternative Routes**:
+   - Click "Show Alternative Routes" button
+   - View weather conditions at origin and destination
+   - Compare 3 routes: Fastest, Balanced, and Eco-Friendly
+   - See traffic conditions and fuel savings for each route
+   - Click any route card to visualize it on the map
+
+4. **Voice Feedback**:
    - Toggle voice announcements with the voice button
    - Get spoken updates on route calculations and tips
+   - Hear route metrics when switching between alternatives
 
-4. **Real-time Updates**:
+5. **Real-time Updates**:
    - The system monitors traffic conditions
    - Automatically reroutes when heavy traffic is detected
    - Get voice alerts for route changes
@@ -84,9 +95,18 @@ Optimize vehicle routes to minimize carbon emissions and maximize fuel efficienc
 
 - `GET /` - API information
 - `POST /calculate-route` - Calculate optimal route
-- `POST /compare-routes` - Compare multiple route options
+- `POST /alternative-routes` - Get multiple route options with weather & traffic
+- `POST /compare-routes` - Compare route metrics (legacy)
 - `POST /recalculate` - Recalculate route with updated conditions
 - `GET /health` - Health check
+
+### Key Endpoint: `/alternative-routes`
+Returns 3 alternative routes with:
+- Real weather data (temperature, conditions, wind)
+- Traffic simulation (normal/moderate/heavy)
+- Fuel efficiency metrics
+- CO2 emissions comparison
+- Interactive route geometries for map display
 
 ## 📊 Route Metrics
 
