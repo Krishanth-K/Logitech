@@ -1,497 +1,465 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>EcoRoute Optimizer</title>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EcoRoute Optimizer</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #e8f5e9 0%, #e3f2fd 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      color: #2e7d32;
+      font-size: 2em;
+    }
+
+    .header p {
+      color: #666;
+      margin-top: 5px;
+    }
+
+    .voice-toggle {
+      background: #4caf50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: all 0.3s;
+    }
+
+    .voice-toggle:hover {
+      background: #45a049;
+    }
+
+    .voice-toggle.disabled {
+      background: #9e9e9e;
+    }
+
+    .alert {
+      background: #2196f3;
+      color: white;
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+      animation: slideIn 0.3s;
+    }
+
+    .alert.show {
+      display: block;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateY(-20px);
+        opacity: 0;
       }
 
-      body {
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        background: linear-gradient(135deg, #e8f5e9 0%, #e3f2fd 100%);
-        min-height: 100vh;
-        padding: 20px;
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .main-content {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      gap: 20px;
+    }
+
+    .input-panel {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .input-panel h2 {
+      color: #333;
+      margin-bottom: 20px;
+      font-size: 1.4em;
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+    }
+
+    .input-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: #555;
+      font-weight: 500;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border 0.3s;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: #4caf50;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-bottom: 10px;
+    }
+
+    .btn-primary {
+      background: #4caf50;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #45a049;
+    }
+
+    .btn-primary:disabled {
+      background: #bdbdbd;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #2196f3;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #1976d2;
+    }
+
+    .traffic-status {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f5f5f5;
+      border-radius: 8px;
+    }
+
+    .traffic-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .traffic-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .traffic-dot.normal {
+      background: #4caf50;
+    }
+
+    .traffic-dot.moderate {
+      background: #ff9800;
+    }
+
+    .traffic-dot.heavy {
+      background: #f44336;
+    }
+
+    .map-panel {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      margin-bottom: 20px;
+    }
+
+    .map-display {
+      width: 100%;
+      height: 400px;
+      border-radius: 8px;
+      z-index: 1;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 15px;
+    }
+
+    .metric-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .metric-card h3 {
+      color: #666;
+      font-size: 0.9em;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+
+    .metric-card .value {
+      font-size: 2em;
+      font-weight: bold;
+      color: #333;
+    }
+
+    .metric-card .unit {
+      color: #999;
+      font-size: 0.9em;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #4caf50;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
       }
 
-      .container {
-        max-width: 1400px;
-        margin: 0 auto;
+      100% {
+        transform: rotate(360deg);
       }
+    }
+  </style>
+</head>
 
-      .header {
-        background: white;
-        padding: 30px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .header h1 {
-        color: #2e7d32;
-        font-size: 2em;
-      }
-
-      .header p {
-        color: #666;
-        margin-top: 5px;
-      }
-
-      .voice-toggle {
-        background: #4caf50;
-        color: white;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 16px;
-        transition: all 0.3s;
-      }
-
-      .voice-toggle:hover {
-        background: #45a049;
-      }
-
-      .voice-toggle.disabled {
-        background: #9e9e9e;
-      }
-
-      .alert {
-        background: #2196f3;
-        color: white;
-        padding: 15px 20px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        display: none;
-        animation: slideIn 0.3s;
-      }
-
-      .alert.show {
-        display: block;
-      }
-
-      @keyframes slideIn {
-        from {
-          transform: translateY(-20px);
-          opacity: 0;
-        }
-        to {
-          transform: translateY(0);
-          opacity: 1;
-        }
-      }
-
-      .main-content {
-        display: grid;
-        grid-template-columns: 350px 1fr;
-        gap: 20px;
-      }
-
-      .input-panel {
-        background: white;
-        padding: 25px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      }
-
-      .input-panel h2 {
-        color: #333;
-        margin-bottom: 20px;
-        font-size: 1.4em;
-      }
-
-      .input-group {
-        margin-bottom: 20px;
-      }
-
-      .input-group label {
-        display: block;
-        margin-bottom: 8px;
-        color: #555;
-        font-weight: 500;
-      }
-
-      .input-group input {
-        width: 100%;
-        padding: 12px;
-        border: 2px solid #e0e0e0;
-        border-radius: 8px;
-        font-size: 14px;
-        transition: border 0.3s;
-      }
-
-      .input-group input:focus {
-        outline: none;
-        border-color: #4caf50;
-      }
-
-      .btn {
-        width: 100%;
-        padding: 14px;
-        border: none;
-        border-radius: 8px;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s;
-        margin-bottom: 10px;
-      }
-
-      .btn-primary {
-        background: #4caf50;
-        color: white;
-      }
-
-      .btn-primary:hover {
-        background: #45a049;
-      }
-
-      .btn-primary:disabled {
-        background: #bdbdbd;
-        cursor: not-allowed;
-      }
-
-      .btn-secondary {
-        background: #2196f3;
-        color: white;
-      }
-
-      .btn-secondary:hover {
-        background: #1976d2;
-      }
-
-      .traffic-status {
-        margin-top: 20px;
-        padding: 15px;
-        background: #f5f5f5;
-        border-radius: 8px;
-      }
-
-      .traffic-indicator {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-top: 10px;
-      }
-
-      .traffic-dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-      }
-
-      .traffic-dot.normal {
-        background: #4caf50;
-      }
-
-      .traffic-dot.moderate {
-        background: #ff9800;
-      }
-
-      .traffic-dot.heavy {
-        background: #f44336;
-      }
-
-      .map-panel {
-        background: white;
-        padding: 25px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
-      }
-
-      .map-display {
-        width: 100%;
-        height: 400px;
-        background: linear-gradient(135deg, #bbdefb 0%, #c8e6c9 100%);
-        border-radius: 8px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        color: #666;
-        position: relative;
-        overflow: hidden;
-      }
-
-      .route-line {
-        position: absolute;
-        width: 4px;
-        height: 60%;
-        background: linear-gradient(to bottom, #4caf50, #2196f3);
-        left: 50%;
-        transform: translateX(-50%);
-        opacity: 0.5;
-      }
-
-      .waypoint {
-        position: absolute;
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 24px;
-        z-index: 2;
-      }
-
-      .waypoint.origin {
-        top: 15%;
-        background: #4caf50;
-      }
-
-      .waypoint.destination {
-        bottom: 15%;
-        background: #f44336;
-      }
-
-      .metrics-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 15px;
-      }
-
-      .metric-card {
-        background: white;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-      }
-
-      .metric-card h3 {
-        color: #666;
-        font-size: 0.9em;
-        margin-bottom: 10px;
-        text-transform: uppercase;
-      }
-
-      .metric-card .value {
-        font-size: 2em;
-        font-weight: bold;
-        color: #333;
-      }
-
-      .metric-card .unit {
-        color: #999;
-        font-size: 0.9em;
-      }
-
-      .loading {
-        display: inline-block;
-        width: 20px;
-        height: 20px;
-        border: 3px solid #f3f3f3;
-        border-top: 3px solid #4caf50;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-      }
-
-      @keyframes spin {
-        0% {
-          transform: rotate(0deg);
-        }
-        100% {
-          transform: rotate(360deg);
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <div>
-          <h1>🌿 EcoRoute Optimizer</h1>
-          <p>Real-time fuel efficiency & carbon reduction</p>
-        </div>
-        <button class="voice-toggle" id="voiceToggle" onclick="toggleVoice()">
-          🔊 Voice ON
-        </button>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <h1>🌿 EcoRoute Optimizer</h1>
+        <p>Real-time fuel efficiency & carbon reduction</p>
       </div>
-
-      <div class="alert" id="alert"></div>
-
-      <div class="main-content">
-        <div class="input-panel">
-          <h2>📍 Route Planning</h2>
-
-          <div class="input-group">
-            <label>Origin</label>
-            <input
-              type="text"
-              id="origin"
-              placeholder="Enter starting location"
-            />
-          </div>
-
-          <div class="input-group">
-            <label>Destination</label>
-            <input
-              type="text"
-              id="destination"
-              placeholder="Enter destination"
-            />
-          </div>
-
-          <button
-            class="btn btn-primary"
-            id="calculateBtn"
-            onclick="calculateRoute()"
-          >
-            Find Optimal Route
-          </button>
-
-          <button
-            class="btn btn-secondary"
-            id="tipBtn"
-            onclick="getDrivingTip()"
-            style="display: none"
-          >
-            Get Driving Tip
-          </button>
-
-          <div class="traffic-status" id="trafficStatus" style="display: none">
-            <h3 style="font-size: 0.9em; color: #666; margin-bottom: 10px">
-              TRAFFIC STATUS
-            </h3>
-            <div class="traffic-indicator">
-              <div class="traffic-dot normal" id="trafficDot"></div>
-              <span id="trafficText">Normal Traffic</span>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <div class="map-panel">
-            <h2 style="margin-bottom: 20px">🗺️ Live Route Map</h2>
-            <div class="map-display" id="mapDisplay">
-              <p style="font-size: 1.2em">
-                Enter origin and destination to calculate route
-              </p>
-            </div>
-          </div>
-
-          <div
-            class="metrics-grid"
-            id="metricsGrid"
-            style="display: none"
-          ></div>
-        </div>
-      </div>
+      <button class="voice-toggle" id="voiceToggle" onclick="toggleVoice()">
+        🔊 Voice ON
+      </button>
     </div>
 
-    <script>
-      const API_URL = "http://localhost:8000";
-      let voiceEnabled = true;
-      let currentRoute = null;
-      let trafficCondition = "normal";
+    <div class="alert" id="alert"></div>
 
-      function speak(text) {
-        if (!voiceEnabled || !window.speechSynthesis) return;
+    <div class="main-content">
+      <div class="input-panel">
+        <h2>📍 Route Planning</h2>
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 0.9;
-        utterance.pitch = 1;
-        window.speechSynthesis.speak(utterance);
+        <div class="input-group">
+          <label>Origin</label>
+          <input type="text" id="origin" placeholder="Enter starting location" />
+        </div>
+
+        <div class="input-group">
+          <label>Destination</label>
+          <input type="text" id="destination" placeholder="Enter destination" />
+        </div>
+
+        <button class="btn btn-primary" id="calculateBtn" onclick="calculateRoute()">
+          Find Optimal Route
+        </button>
+
+        <button class="btn btn-secondary" id="tipBtn" onclick="getDrivingTip()" style="display: none">
+          Get Driving Tip
+        </button>
+
+        <div class="traffic-status" id="trafficStatus" style="display: none">
+          <h3 style="font-size: 0.9em; color: #666; margin-bottom: 10px">
+            TRAFFIC STATUS
+          </h3>
+          <div class="traffic-indicator">
+            <div class="traffic-dot normal" id="trafficDot"></div>
+            <span id="trafficText">Normal Traffic</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="map-panel">
+          <h2 style="margin-bottom: 20px">🗺️ Live Route Map</h2>
+          <div class="map-display" id="mapDisplay"></div>
+        </div>
+
+        <div class="metrics-grid" id="metricsGrid" style="display: none"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = "http://localhost:8000";
+    let voiceEnabled = true;
+    let currentRoute = null;
+    let trafficCondition = "normal";
+    let map = null;
+    let routeLayer = null;
+
+    // Initialize map
+    document.addEventListener('DOMContentLoaded', () => {
+      map = L.map('mapDisplay').setView([40.7128, -74.0060], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+    });
+
+    function speak(text) {
+      if (!voiceEnabled || !window.speechSynthesis) return;
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function toggleVoice() {
+      voiceEnabled = !voiceEnabled;
+      const btn = document.getElementById("voiceToggle");
+      btn.textContent = voiceEnabled ? "🔊 Voice ON" : "🔇 Voice OFF";
+      btn.classList.toggle("disabled", !voiceEnabled);
+    }
+
+    function showAlert(message) {
+      const alert = document.getElementById("alert");
+      alert.textContent = message;
+      alert.classList.add("show");
+      setTimeout(() => alert.classList.remove("show"), 5000);
+    }
+
+    async function calculateRoute() {
+      const origin = document.getElementById("origin").value;
+      const destination = document.getElementById("destination").value;
+
+      if (!origin || !destination) {
+        speak("Please enter both origin and destination.");
+        showAlert("⚠️ Please enter both origin and destination");
+        return;
       }
 
-      function toggleVoice() {
-        voiceEnabled = !voiceEnabled;
-        const btn = document.getElementById("voiceToggle");
-        btn.textContent = voiceEnabled ? "🔊 Voice ON" : "🔇 Voice OFF";
-        btn.classList.toggle("disabled", !voiceEnabled);
+      const btn = document.getElementById("calculateBtn");
+      btn.disabled = true;
+      btn.innerHTML = '<span class="loading"></span> Calculating...';
+
+      speak("Calculating most fuel-efficient route. Please wait.");
+
+      try {
+        const response = await fetch(`${API_URL}/calculate-route`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            origin,
+            destination,
+            traffic_condition: trafficCondition,
+          }),
+        });
+
+        const data = await response.json();
+        currentRoute = data;
+
+        displayRoute(data);
+        speak(
+          `Route calculated. Distance: ${data.metrics.distance_km} kilometers. Estimated fuel consumption: ${data.metrics.fuel_liters} liters. Carbon emissions: ${data.metrics.co2_kg} kilograms. Drive smoothly to maximize efficiency.`,
+        );
+
+        document.getElementById("tipBtn").style.display = "block";
+        document.getElementById("trafficStatus").style.display = "block";
+
+        // Simulate traffic changes
+        startTrafficSimulation();
+      } catch (error) {
+        console.error("Error:", error);
+        showAlert(
+          "❌ Error calculating route. Make sure backend is running on port 8000",
+        );
+        speak("Error calculating route. Please try again.");
       }
 
-      function showAlert(message) {
-        const alert = document.getElementById("alert");
-        alert.textContent = message;
-        alert.classList.add("show");
-        setTimeout(() => alert.classList.remove("show"), 5000);
+      btn.disabled = false;
+      btn.textContent = "Find Optimal Route";
+    }
+
+    function displayRoute(data) {
+      // Clear previous layers
+      if (routeLayer) {
+        map.removeLayer(routeLayer);
       }
 
-      async function calculateRoute() {
-        const origin = document.getElementById("origin").value;
-        const destination = document.getElementById("destination").value;
-
-        if (!origin || !destination) {
-          speak("Please enter both origin and destination.");
-          showAlert("⚠️ Please enter both origin and destination");
-          return;
+      // Remove existing markers (except tile layer)
+      map.eachLayer((layer) => {
+        if (layer instanceof L.Marker || layer instanceof L.Polyline) {
+          map.removeLayer(layer);
         }
+      });
 
-        const btn = document.getElementById("calculateBtn");
-        btn.disabled = true;
-        btn.innerHTML = '<span class="loading"></span> Calculating...';
+      const waypoints = data.waypoints.map(wp => [wp.lat, wp.lng]);
 
-        speak("Calculating most fuel-efficient route. Please wait.");
+      // Add markers
+      const originMarker = L.marker(waypoints[0]).addTo(map)
+        .bindPopup(`<b>Origin:</b> ${data.origin}`).openPopup();
 
-        try {
-          const response = await fetch(`${API_URL}/calculate-route`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              origin,
-              destination,
-              traffic_condition: trafficCondition,
-            }),
-          });
+      const destMarker = L.marker(waypoints[waypoints.length - 1]).addTo(map)
+        .bindPopup(`<b>Destination:</b> ${data.destination}`);
 
-          const data = await response.json();
-          currentRoute = data;
+      // Draw route line
+      // Simulate a curved path if we only have 2 points to look nicely
+      // For now, straight line from backend is fine
+      const routeLine = L.polyline(waypoints, {
+        color: '#4caf50',
+        weight: 6,
+        opacity: 0.8
+      }).addTo(map);
 
-          displayRoute(data);
-          speak(
-            `Route calculated. Distance: ${data.metrics.distance_km} kilometers. Estimated fuel consumption: ${data.metrics.fuel_liters} liters. Carbon emissions: ${data.metrics.co2_kg} kilograms. Drive smoothly to maximize efficiency.`,
-          );
+      // Fit bounds
+      map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
 
-          document.getElementById("tipBtn").style.display = "block";
-          document.getElementById("trafficStatus").style.display = "block";
-
-          // Simulate traffic changes
-          startTrafficSimulation();
-        } catch (error) {
-          console.error("Error:", error);
-          showAlert(
-            "❌ Error calculating route. Make sure backend is running on port 8000",
-          );
-          speak("Error calculating route. Please try again.");
-        }
-
-        btn.disabled = false;
-        btn.textContent = "Find Optimal Route";
-      }
-
-      function displayRoute(data) {
-        // Update map
-        const mapDisplay = document.getElementById("mapDisplay");
-        mapDisplay.innerHTML = `
-                <div class="route-line"></div>
-                <div class="waypoint origin">📍</div>
-                <div style="position: absolute; top: 10%; text-align: center; z-index: 3;">
-                    <strong>${data.origin}</strong>
-                </div>
-                <div style="position: absolute; top: 50%; text-align: center;">
-                    <div style="background: white; padding: 10px 20px; border-radius: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                        ${data.metrics.distance_km} km
-                    </div>
-                </div>
-                <div class="waypoint destination">🎯</div>
-                <div style="position: absolute; bottom: 10%; text-align: center; z-index: 3;">
-                    <strong>${data.destination}</strong>
-                </div>
-            `;
-
-        // Display metrics
-        const metricsGrid = document.getElementById("metricsGrid");
-        metricsGrid.style.display = "grid";
-        metricsGrid.innerHTML = `
+      // Display metrics
+      const metricsGrid = document.getElementById("metricsGrid");
+      metricsGrid.style.display = "grid";
+      metricsGrid.innerHTML = `
                 <div class="metric-card">
                     <h3>⛽ Fuel</h3>
                     <div class="value">${data.metrics.fuel_liters}</div>
@@ -513,61 +481,62 @@
                     <div class="unit">meters</div>
                 </div>
             `;
-      }
+    }
 
-      function getDrivingTip() {
-        if (!currentRoute || !currentRoute.tips) return;
+    function getDrivingTip() {
+      if (!currentRoute || !currentRoute.tips) return;
 
-        const tip =
-          currentRoute.tips[
-            Math.floor(Math.random() * currentRoute.tips.length)
-          ];
-        speak(tip);
-        showAlert(`💡 ${tip}`);
-      }
+      const tip =
+        currentRoute.tips[
+        Math.floor(Math.random() * currentRoute.tips.length)
+        ];
+      speak(tip);
+      showAlert(`💡 ${tip}`);
+    }
 
-      function startTrafficSimulation() {
-        setInterval(async () => {
-          if (!currentRoute) return;
+    function startTrafficSimulation() {
+      setInterval(async () => {
+        if (!currentRoute) return;
 
-          const conditions = ["normal", "moderate", "heavy"];
-          const newCondition =
-            conditions[Math.floor(Math.random() * conditions.length)];
+        const conditions = ["normal", "moderate", "heavy"];
+        const newCondition =
+          conditions[Math.floor(Math.random() * conditions.length)];
 
-          if (newCondition !== trafficCondition && newCondition === "heavy") {
-            trafficCondition = newCondition;
-            updateTrafficDisplay();
+        if (newCondition !== trafficCondition && newCondition === "heavy") {
+          trafficCondition = newCondition;
+          updateTrafficDisplay();
 
-            speak(
-              "Heavy traffic detected. Recalculating more efficient route.",
-            );
-            showAlert("🚦 Heavy traffic ahead - Rerouting to save fuel");
+          speak(
+            "Heavy traffic detected. Recalculating more efficient route.",
+          );
+          showAlert("🚦 Heavy traffic ahead - Rerouting to save fuel");
 
-            // Recalculate
-            const response = await fetch(`${API_URL}/recalculate`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                origin: currentRoute.origin,
-                destination: currentRoute.destination,
-                traffic_condition: trafficCondition,
-              }),
-            });
+          // Recalculate
+          const response = await fetch(`${API_URL}/recalculate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              origin: currentRoute.origin,
+              destination: currentRoute.destination,
+              traffic_condition: trafficCondition,
+            }),
+          });
 
-            const data = await response.json();
-            currentRoute = data.route;
-            displayRoute(data.route);
-          }
-        }, 20000);
-      }
+          const data = await response.json();
+          currentRoute = data.route;
+          displayRoute(data.route);
+        }
+      }, 20000);
+    }
 
-      function updateTrafficDisplay() {
-        const dot = document.getElementById("trafficDot");
-        const text = document.getElementById("trafficText");
+    function updateTrafficDisplay() {
+      const dot = document.getElementById("trafficDot");
+      const text = document.getElementById("trafficText");
 
-        dot.className = `traffic-dot ${trafficCondition}`;
-        text.textContent = `${trafficCondition.charAt(0).toUpperCase() + trafficCondition.slice(1)} Traffic`;
-      }
-    </script>
-  </body>
+      dot.className = `traffic-dot ${trafficCondition}`;
+      text.textContent = `${trafficCondition.charAt(0).toUpperCase() + trafficCondition.slice(1)} Traffic`;
+    }
+  </script>
+</body>
+
 </html>
