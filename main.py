@@ -17,8 +17,13 @@ from core import (
     TrafficCondition, 
     WeatherData
 )
+from fastapi.responses import Response
 
 app = FastAPI(title="EcoRoute Optimizer API")
+
+# Configuration
+ELEVENLABS_API_KEY = "YOUR_ELEVENLABS_API_KEY_HERE"  # Replace with actual key
+ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM" # "Rachel" voice (Standard default)
 
 # CORS middleware
 app.add_middleware(
@@ -272,9 +277,44 @@ async def recalculate_route(request: RouteRequest):
         "route": await calculate_route(request)
     }
 
-@app.get("/health")
-async def health_check():
     return {"status": "healthy", "service": "EcoRoute API (Core Integrated)"}
+
+class TTSRequest(BaseModel):
+    text: str
+
+@app.post("/tts")
+async def text_to_speech(request: TTSRequest):
+    """
+    Convert text to speech using ElevenLabs API
+    """
+    if "YOUR_ELEVENLABS_API_KEY" in ELEVENLABS_API_KEY:
+         raise HTTPException(status_code=500, detail="API Key not configured")
+
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+    headers = {
+        "Accept": "audio/mpeg",
+        "Content-Type": "application/json",
+        "xi-api-key": ELEVENLABS_API_KEY
+    }
+    data = {
+        "text": request.text,
+        "model_id": "eleven_monolingual_v1",
+        "voice_settings": {
+            "stability": 0.5,
+            "similarity_boost": 0.5
+        }
+    }
+
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        if response.status_code == 200:
+            return Response(content=response.content, media_type="audio/mpeg")
+        else:
+            print(f"ElevenLabs Error: {response.status_code} - {response.text}")
+            raise HTTPException(status_code=response.status_code, detail="ElevenLabs API Error")
+    except Exception as e:
+        print(f"TTS Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
