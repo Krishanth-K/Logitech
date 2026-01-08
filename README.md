@@ -155,12 +155,28 @@ Voice features include:
 
 ## 🐳 Docker Deployment
 
-Build and run with Docker:
+The easiest way to run the application is with Docker Compose.
 
-```bash
-docker build -t ecoroute-optimizer .
-docker run -p 8000:8000 ecoroute-optimizer
-```
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/yourusername/ecoroute-optimizer.git
+   cd ecoroute-optimizer
+   ```
+
+2. **Setup Environment**:
+   Copy the example environment file and add your ElevenLabs API Key (optional, for premium voice):
+   ```bash
+   cp .env.example .env
+   # Edit .env and paste your key: ELEVENLABS_API_KEY=your_key_here
+   ```
+
+3. **Run with Docker Compose**:
+   ```bash
+   docker-compose up --build
+   ```
+
+4. **Access the App**:
+   Open [http://localhost:8000/frontend.html](http://localhost:8000/frontend.html)
 
 ## 🔮 Future Enhancements
 
