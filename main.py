@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import random
 from enum import Enum
+import math
 
 app = FastAPI(title="EcoRoute Optimizer API")
 
@@ -24,6 +25,10 @@ class TrafficCondition(str, Enum):
 class RouteRequest(BaseModel):
     origin: str
     destination: str
+    origin_lat: Optional[float] = None
+    origin_lng: Optional[float] = None
+    dest_lat: Optional[float] = None
+    dest_lng: Optional[float] = None
     traffic_condition: Optional[TrafficCondition] = TrafficCondition.NORMAL
 
 class RouteMetrics(BaseModel):
@@ -105,30 +110,67 @@ class RouteOptimizer:
         "Use air conditioning sparingly - it increases fuel consumption by 20%"
     ]
     
+    @staticmethod
+    def haversine(lat1, lon1, lat2, lon2):
+        """
+        Calculate the great circle distance between two points 
+        on the earth (specified in decimal degrees)
+        """
+        # convert decimal degrees to radians 
+        lon1, lat1, lon2, lat2 = map(math.radians, [lon1, lat1, lon2, lat2])
+
+        # haversine formula 
+        dlon = lon2 - lon1 
+        dlat = lat2 - lat1 
+        a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+        c = 2 * math.asin(math.sqrt(a)) 
+        r = 6371 # Radius of earth in kilometers. Use 3956 for miles
+        return c * r
+
     @classmethod
-    def calculate_route(cls, origin: str, destination: str, traffic: TrafficCondition) -> RouteResponse:
+    def calculate_route(cls, request: RouteRequest) -> RouteResponse:
         """
         Calculate optimal route with fuel metrics
         In production: integrate with OSRM, GraphHopper, or Google Maps API
         """
         
-        # Simulate route calculation (replace with actual API calls)
-        # For demo: generate realistic values
-        distance = 25 + random.uniform(0, 50)  # 25-75 km
-        elevation = 50 + random.uniform(0, 300)  # 50-350 m
+        origin = request.origin
+        destination = request.destination
+        traffic = request.traffic_condition
+        
+        # Determine distance and waypoints
+        if request.origin_lat and request.origin_lng and request.dest_lat and request.dest_lng:
+            # REAL COORDINATES MODE
+            distance = cls.haversine(
+                request.origin_lat, request.origin_lng,
+                request.dest_lat, request.dest_lng
+            )
+            # Add 20% to accounting for road network vs straight line
+            distance = distance * 1.2
+            
+            waypoints = [
+                {"lat": request.origin_lat, "lng": request.origin_lng, "name": origin},
+                {"lat": request.dest_lat, "lng": request.dest_lng, "name": destination}
+            ]
+        else:
+            # SIMULATION MODE (Legacy)
+            # Simulate route calculation (replace with actual API calls)
+            # For demo: generate realistic values
+            distance = 25 + random.uniform(0, 50)  # 25-75 km
+            
+            waypoints = [
+                {"lat": 40.7128 + random.uniform(-0.1, 0.1), 
+                 "lng": -74.0060 + random.uniform(-0.1, 0.1), 
+                 "name": origin},
+                {"lat": 40.7580 + random.uniform(-0.1, 0.1), 
+                 "lng": -73.9855 + random.uniform(-0.1, 0.1), 
+                 "name": destination}
+            ]
+            
+        elevation = 50 + random.uniform(0, 300)  # Keep elevation random for now
         
         # Calculate metrics
         metrics = FuelCalculator.calculate(distance, elevation, traffic)
-        
-        # Generate waypoints (simplified)
-        waypoints = [
-            {"lat": 40.7128 + random.uniform(-0.1, 0.1), 
-             "lng": -74.0060 + random.uniform(-0.1, 0.1), 
-             "name": origin},
-            {"lat": 40.7580 + random.uniform(-0.1, 0.1), 
-             "lng": -73.9855 + random.uniform(-0.1, 0.1), 
-             "name": destination}
-        ]
         
         # Select relevant tips
         tips = random.sample(cls.EFFICIENCY_TIPS, 3)
@@ -197,11 +239,7 @@ async def calculate_route(request: RouteRequest):
     if not request.origin or not request.destination:
         raise HTTPException(status_code=400, detail="Origin and destination required")
     
-    route = RouteOptimizer.calculate_route(
-        request.origin, 
-        request.destination, 
-        request.traffic_condition
-    )
+    route = RouteOptimizer.calculate_route(request)
     
     return route
 
@@ -219,11 +257,7 @@ async def compare_routes(request: RouteRequest):
 async def recalculate_route(request: RouteRequest):
     """Recalculate route with updated traffic conditions"""
     
-    route = RouteOptimizer.calculate_route(
-        request.origin,
-        request.destination,
-        request.traffic_condition
-    )
+    route = RouteOptimizer.calculate_route(request)
     
     return {
         "message": "Route recalculated due to traffic change",
