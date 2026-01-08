@@ -213,7 +213,7 @@ class CostModel:
     """Unified Cost Model"""
     
     BASE_FUEL_PER_KM = 0.08
-    FUEL_COST_PER_LITER = 1.50
+    FUEL_COST_PER_LITER = 100.0  # INR
     CO2_PER_LITER = 2.31
     
     @classmethod
@@ -227,11 +227,10 @@ class CostModel:
         # 1. Distance Cost
         dist_cost = distance_km * cls.BASE_FUEL_PER_KM
         
-        # 2. Elevation Penalty (Ascent costs fuel, descent saves little/nothing safely)
-        # 0.15L extra per 100m ascent approx
+        # 2. Elevation Penalty
         elev_cost = (ascent_m / 100.0) * 0.15
         
-        # 3. Traffic Penalty (Idling, stop-go)
+        # 3. Traffic Penalty
         traffic_multipliers = {
             TrafficCondition.NORMAL: 1.0,
             TrafficCondition.MODERATE: 1.25,
@@ -239,8 +238,7 @@ class CostModel:
         }
         traffic_mult = traffic_multipliers.get(traffic, 1.0)
         
-        # 4. Weather Penalty (Air density, rolling resistance, wipers/lights)
-        weather_penalty_liters = 0.0
+        # 4. Weather Penalty
         weather_factor = 1.0
         if weather:
             if weather.precipitation > 0:
@@ -248,34 +246,24 @@ class CostModel:
             if weather.wind_speed > 25:
                 weather_factor += 0.05
                 
-        # 5. Speed/Time Penalty (Opportunity cost)
-        # We convert time to "fuel equivalent" or simple cost units for the scalar.
-        # Let's say 1 hour = $15. Fuel is $1.5/L. So 1 hr ~ 10L of fuel equivalent cost?
-        # That seems high for "eco" routing. Let's weigh time less.
-        # Let's just use a weighted sum of normalized factors for the "score".
-        
         # Total Fuel Estimate (Physical)
         estimated_fuel_liters = (dist_cost + elev_cost) * traffic_mult * weather_factor
         
-        # Monetary Cost
-        fuel_cost_usd = estimated_fuel_liters * cls.FUEL_COST_PER_LITER
-        time_cost_usd = (duration_min / 60.0) * 15.0 # Value of time
+        # Monetary Cost (INR)
+        fuel_cost_inr = estimated_fuel_liters * cls.FUEL_COST_PER_LITER
+        time_cost_inr = (duration_min / 60.0) * 500.0 # Value of time in INR (~₹500/hr)
         
-        # Unified Score (Lower is better)
-        # Weighted: 70% efficiency/cost, 30% time?
-        # Actually, requirements say "compute single comparable scalar cost".
-        # Let's sum the monetary costs.
-        total_cost_score = fuel_cost_usd + (time_cost_usd * 0.5) # Weighing time less to prioritize eco
+        total_cost_score = fuel_cost_inr + (time_cost_inr * 0.5)
         
         # Confidence
         confidence = 1.0
         if weather and weather.is_fallback: confidence *= 0.8
-        if traffic == TrafficCondition.HEAVY: confidence *= 0.9 # Harder to predict exact fuel
+        if traffic == TrafficCondition.HEAVY: confidence *= 0.9
         
         return RouteMetrics(
             fuel_liters=round(estimated_fuel_liters, 2),
-            co2_kg=round(estimated_fuel_liters * cls.CO2_PER_LITER, 2),
-            cost_usd=round(fuel_cost_usd, 2),
+            co2_kg=round(estimated_fuel_liters * cls.CO2_PER_LITER, 3),
+            cost_usd=round(fuel_cost_inr, 2), # Note: kept field name cost_usd for API compatibility but value is INR
             distance_km=round(distance_km, 1),
             elevation_gain_m=round(ascent_m, 0),
             estimated_time_min=round(duration_min, 0),
