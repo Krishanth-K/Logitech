@@ -339,6 +339,22 @@ class RouteFinder:
         }]
 
     @staticmethod
+    async def snap_to_road(lat: float, lon: float) -> Tuple[float, float]:
+        """Snap coordinate to nearest road using OSRM"""
+        try:
+            url = f"https://router.project-osrm.org/nearest/v1/driving/{lon},{lat}"
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("code") == "Ok" and data.get("waypoints"):
+                    loc = data["waypoints"][0]["location"]
+                    return float(loc[1]), float(loc[0]) # lat, lon
+        except Exception:
+            pass
+        return lat, lon
+
+    @staticmethod
     def haversine(lat1, lon1, lat2, lon2):
         R = 6371
         phi1, phi2 = math.radians(lat1), math.radians(lat2)

@@ -315,12 +315,14 @@ async def get_alternative_routes(request: RouteRequest):
         if len(unique_routes) < 3:
             # Deviation 1 (Left)
             via1 = get_deviation_point(request.origin_lat, request.origin_lng, request.dest_lat, request.dest_lng, scale)
+            via1 = await RouteFinder.snap_to_road(via1[0], via1[1])
             r_dev1 = await fetch_osrm_route([(request.origin_lat, request.origin_lng), via1, (request.dest_lat, request.dest_lng)])
             for r in r_dev1: add_route_if_new(r)
 
         if len(unique_routes) < 3:
             # Deviation 2 (Right)
             via2 = get_deviation_point(request.origin_lat, request.origin_lng, request.dest_lat, request.dest_lng, -scale)
+            via2 = await RouteFinder.snap_to_road(via2[0], via2[1])
             r_dev2 = await fetch_osrm_route([(request.origin_lat, request.origin_lng), via2, (request.dest_lat, request.dest_lng)])
             for r in r_dev2: add_route_if_new(r)
 
